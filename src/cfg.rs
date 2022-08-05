@@ -147,7 +147,7 @@ impl CFGBuilder {
             }
             yul::Statement::Continue => {}
             yul::Statement::Expression(yul::Expression::FunctionCall(fun_call))
-                if !Self::is_builtin(&fun_call.identifier.identifier) =>
+                if !Self::is_builtin(&fun_call.function.name) =>
             {
                 self.visit_function_call(fun_call);
             }
@@ -185,17 +185,17 @@ impl CFGBuilder {
     fn create_function_def_cfg(&mut self, fun: &yul::FunctionDefinition) {
         assert!(self.statement_acc.is_empty());
 
-        self.function_def_nodes(&fun.name.identifier);
+        self.function_def_nodes(&fun.name.name);
 
         let (entry, exit) = self
             .cfg
             .functions
-            .get_mut(&fun.name.identifier)
+            .get_mut(&fun.name.name)
             .unwrap()
             .clone();
 
         self.set_current(entry);
-        self.visit_block(&fun.block);
+        self.visit_block(&fun.body);
         self.save_acc();
 
         self.connect(self.current.clone(), exit, Edge::Empty);
@@ -212,12 +212,12 @@ impl CFGBuilder {
         self.connect(
             header.clone(),
             true_branch.clone(),
-            Edge::IfTrueBranch(ifs.expression.clone()),
+            Edge::IfTrueBranch(ifs.condition.clone()),
         );
         self.connect(
             header,
             after_if.clone(),
-            Edge::IfFalseBranch(ifs.expression.clone()),
+            Edge::IfFalseBranch(ifs.condition.clone()),
         );
         self.connect(
             true_branch.clone(),
@@ -226,7 +226,7 @@ impl CFGBuilder {
         );
 
         self.set_current(true_branch);
-        self.visit_block(&ifs.block);
+        self.visit_block(&ifs.body);
         self.save_acc();
 
         self.set_current(after_if);
@@ -251,7 +251,7 @@ impl CFGBuilder {
             self.connect(case_node.clone(), after.clone(), Edge::AfterSwitch);
 
             self.set_current(case_node.clone());
-            self.visit_block(&case.block);
+            self.visit_block(&case.body);
             self.save_acc();
         });
 
@@ -350,7 +350,7 @@ impl CFGBuilder {
 
         let after = self.new_node();
 
-        let (entry, exit) = self.function_def_nodes(&fun_call.identifier.identifier);
+        let (entry, exit) = self.function_def_nodes(&fun_call.function.name);
 
         self.connect(self.current.clone(), entry.clone(), Edge::FunctionEntry);
         self.connect(exit.clone(), after.clone(), Edge::FunctionExit);
@@ -441,11 +441,11 @@ mod tests {
     #[test]
     fn if_statement() {
         let if_st = yul::If {
-            expression: yul::Expression::Literal(yul::Literal {
+            condition: yul::Expression::Literal(yul::Literal {
                 literal: "cond".to_string(),
                 yultype: None,
             }),
-            block: yul::Block { statements: vec![] },
+            body: yul::Block { statements: vec![] },
         };
 
         let cfg = CFGBuilder::build(yul::Statement::If(if_st));
