@@ -1,3 +1,4 @@
+use yultsur::visitor::ASTVisitor;
 use yultsur::yul;
 
 use std::collections::HashMap;
@@ -102,13 +103,11 @@ impl CFGBuilder {
     fn save_acc(&mut self) {
         self.cfg.blocks.insert(
             self.current.clone(),
-            // TODO How can we force `self.statementes_acc` to move here?
             yul::Block {
-                statements: self.statement_acc.clone(),
+                statements: std::mem::take(&mut self.statement_acc)
             },
         );
         // TODO assert that the insertion happened
-        self.statement_acc.clear();
     }
 
     fn add_node(&mut self, from: Node) {
@@ -126,44 +125,8 @@ impl CFGBuilder {
         self.cfg.graph.get_mut(&from).unwrap().push((to.clone(), edge.clone()));
         self.cfg.rev_graph.get_mut(&to).unwrap().push((from, edge));
     }
-
-    fn visit_statement(&mut self, st: &yul::Statement) {
-        match st {
-            yul::Statement::Block(block) => {
-                self.visit_block(block);
-            }
-            yul::Statement::FunctionDefinition(..) => {}
-            yul::Statement::If(if_st) => {
-                self.visit_if(if_st);
-            }
-            yul::Statement::Switch(switch) => {
-                self.visit_switch(switch);
-            }
-            yul::Statement::ForLoop(for_loop) => {
-                self.visit_for(for_loop);
-            }
-            yul::Statement::Break => {
-                self.visit_break();
-            }
-            yul::Statement::Continue => {}
-            yul::Statement::Expression(yul::Expression::FunctionCall(fun_call))
-                if !Self::is_builtin(&fun_call.function.name) =>
-            {
-                self.visit_function_call(fun_call);
-            }
-            _ => self.statement_acc.push(st.clone()),
-        };
-    }
-
     fn is_builtin(fun_name: &String) -> bool {
         false
-    }
-
-    fn visit_block(&mut self, block: &yul::Block) {
-        block
-            .statements
-            .iter()
-            .for_each(|st| self.visit_statement(st));
     }
 
     fn create_function_def_nodes(&mut self, fun_name: &String) {
@@ -201,6 +164,19 @@ impl CFGBuilder {
         self.connect(self.current.clone(), exit, Edge::Empty);
     }
 
+}
+
+impl ASTVisitor for CFGBuilder {
+    fn enter_variable_declaration(&mut self, variable: &yul::VariableDeclaration) {
+        self.statement_acc.push(yul::Statement::VariableDeclaration(variable.clone()));
+    }
+    fn enter_assignment(&mut self, assignment: &yul::Assignment) {
+        self.statement_acc.push(yul::Statement::Assignment(assignment.clone()));
+    }
+    fn enter_expression(&mut self, expression: &yul::Expression) {
+        self.statement_acc.push(yul::Statement::Expression(expression.clone()));
+    }
+
     fn visit_if(&mut self, ifs: &yul::If) {
         self.save_acc();
 
@@ -226,7 +202,9 @@ impl CFGBuilder {
         );
 
         self.set_current(true_branch);
+
         self.visit_block(&ifs.body);
+
         self.save_acc();
 
         self.set_current(after_if);
@@ -259,8 +237,7 @@ impl CFGBuilder {
     }
 
     fn visit_for(&mut self, for_loop: &yul::ForLoop) {
-        // TODO make this work \/
-        //self.statement_acc.append(&for_loop.pre.statements.clone());
+        self.statement_acc.append(&mut for_loop.pre.statements.clone());
         self.save_acc();
 
         let header = self.new_node();
@@ -298,7 +275,7 @@ impl CFGBuilder {
         self.set_current(after);
     }
 
-    fn visit_break(&mut self) {
+    fn enter_break(&mut self) {
         self.save_acc();
 
         self.connect(
@@ -312,7 +289,7 @@ impl CFGBuilder {
         self.save_acc();
     }
 
-    fn visit_continue(&mut self) {
+    fn enter_continue(&mut self) {
         self.save_acc();
 
         self.connect(
@@ -326,7 +303,7 @@ impl CFGBuilder {
         self.save_acc();
     }
 
-    fn visit_leave(&mut self) {
+    fn enter_leave(&mut self) {
         self.save_acc();
 
         self.connect(
@@ -343,19 +320,6 @@ impl CFGBuilder {
         let ghost = self.new_node();
         self.set_current(ghost);
         self.save_acc();
-    }
-
-    fn visit_function_call(&mut self, fun_call: &yul::FunctionCall) {
-        self.save_acc();
-
-        let after = self.new_node();
-
-        let (entry, exit) = self.function_def_nodes(&fun_call.function.name);
-
-        self.connect(self.current.clone(), entry.clone(), Edge::FunctionEntry);
-        self.connect(exit.clone(), after.clone(), Edge::FunctionExit);
-
-        self.set_current(after);
     }
 }
 
