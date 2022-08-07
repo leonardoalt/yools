@@ -92,7 +92,34 @@ impl Encoder {
 
     fn encode_if(&mut self, expr: &yul::If) {
         let cond = self.encode_expression(&expr.condition);
+        assert!(cond.len() == 1);
         let prev_ssa = self.ssa_counter.clone();
+
+        self.encode_block(&expr.body);
+
+        let mut merge_ssa = HashMap::<u64, u64>::new();
+
+        prev_ssa
+            .iter()
+            .for_each(|(key, value)| {
+                let branch_ssa = *self.ssa_counter.get(key).unwrap();
+                if branch_ssa > *value {
+                    let new_ssa = branch_ssa + 1;
+                    self.out(format!(
+                        "(define-const {} (_ BitVec 256) (ite {} {} {})",
+                        self.id_to_smt_variable(*key, new_ssa).name,
+                        cond[0].name,
+                        self.id_to_smt_variable(*key, branch_ssa).name,
+                        self.id_to_smt_variable(*key, *value).name,
+                    ));
+
+                    merge_ssa.insert(key.clone(), new_ssa);
+                } else {
+                    merge_ssa.insert(key.clone(), value.clone());
+                }
+            });
+
+        self.ssa_counter = merge_ssa;
     }
 
     fn encode_expression(&mut self, expr: &Expression) -> Vec<SMTVariable> {
@@ -124,6 +151,12 @@ impl Encoder {
         self.expression_counter += 1;
         SMTVariable {
             name: format!("_{}", self.expression_counter),
+        }
+    }
+
+    fn id_to_smt_variable(&self, id: u64, ssa_idx: u64) -> SMTVariable {
+        SMTVariable {
+            name: format!("v_{}_{}", id, ssa_idx),
         }
     }
 
@@ -183,4 +216,22 @@ mod tests {
             .join("\n")
         );
     }
+
+    #[test]
+    fn if_st() {
+        assert_eq!(
+            encode_from_source("{ let x := 9 let c := 1 if c { x := 666 } }"),
+            vec![
+                "(define-const _1 (_ BitVec 256) 9)",
+                "(define-const v_2_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) 1)",
+                "(define-const v_3_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) 666)",
+                "(define-const v_2_2 (_ BitVec 256) _3)",
+                "(define-const v_2_3 (_ BitVec 256) (ite v_3_1 v_2_2 v_2_1)\n"
+            ]
+            .join("\n")
+        );
+    }
+
 }
