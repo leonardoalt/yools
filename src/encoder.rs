@@ -26,9 +26,9 @@ impl Encoder {
     }
 
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
-        let var = self.new_variable();
+        let var = self.new_temporary_variable();
         // TODO encode in hex
-//        self.output += "(define-const " + var.name + " (_ BitVec 256) " + literal.literal + ")";
+        self.out(format!("(define-const {} (_ BitVec 256) {})", &var.name, &literal.literal));
         var
     }
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
@@ -36,16 +36,20 @@ impl Encoder {
     }
     fn encode_function_call(&mut self, _function: &FunctionCall) -> SMTVariable {
         // TODO
-        self.new_variable()
+        self.new_temporary_variable()
     }
 
-    fn new_variable(&mut self) -> SMTVariable {
+    fn new_temporary_variable(&mut self) -> SMTVariable {
         self.expression_counter += 1;
         SMTVariable{name: format!("_{}", self.expression_counter)}
     }
 
     fn to_smt_variable(&mut self, identifier: &Identifier) -> SMTVariable {
         let id = identifier.id.unwrap();
-        SMTVariable{name: format!("v_{}_{}", id, self.ssa_counter[&id])}
+        SMTVariable{name: format!("v_{}_{}", id, self.ssa_counter[& id])}
+    }
+
+    fn out(&mut self, x: String) {
+        self.output = format!("{}\n{}", self.output, x)
     }
 }
