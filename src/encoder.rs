@@ -20,27 +20,44 @@ struct SMTVariable {
 
 impl Encoder {
     fn new() -> Encoder {
-        Encoder{expression_counter: 0, ssa_counter: HashMap::new(), output: String::new()}
+        Encoder {
+            expression_counter: 0,
+            ssa_counter: HashMap::new(),
+            output: String::new(),
+        }
     }
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
             self.ssa_counter.insert(v.id.unwrap(), 0);
-            self.out(format!(
-                "(declare-const {} (_ BitVec 256))",
-                self.to_smt_variable(v).name
-            ));
-        }
-        if let Some(value) = &var.value {
-            let values = self.encode_expression(value);
-            assert_eq!(values.len(), var.variables.len());
-            for (v, val) in var.variables.iter().zip(values.iter()) {
+            if var.value == None {
                 self.out(format!(
-                    "(assert (= {} {}))",
-                    self.to_smt_variable(v).name,
-                    val.name
+                    "(declare-const {} (_ BitVec 256))",
+                    self.to_smt_variable(v).name
                 ));
             }
+        }
+        if let Some(value) = &var.value {
+            self.encode_assignment_inner(&var.variables, value)
+        }
+    }
+
+    fn encode_assignment(&mut self, assignment: &Assignment) {
+        self.encode_assignment_inner(&assignment.variables, &assignment.value);
+    }
+
+    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, value: &Expression) {
+        for v in variables {
+            *self.ssa_counter.get_mut(&v.id.unwrap()).unwrap() += 1;
+        }
+        let values = self.encode_expression(value);
+        assert_eq!(values.len(), variables.len());
+        for (v, val) in variables.iter().zip(values.iter()) {
+            self.out(format!(
+                "(define-const {} (_ BitVec 256) {})",
+                self.to_smt_variable(v).name,
+                val.name
+            ));
         }
     }
 
@@ -57,7 +74,10 @@ impl Encoder {
 
     fn encode_statement(&mut self, st: &yul::Statement) {
         match st {
-            yul::Statement::VariableDeclaration(var_decl) => self.encode_variable_declaration(var_decl),
+            yul::Statement::VariableDeclaration(var_decl) => {
+                self.encode_variable_declaration(var_decl)
+            }
+            yul::Statement::Assignment(assignment) => self.encode_assignment(assignment),
             yul::Statement::Block(block) => self.encode_block(block),
             yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
             yul::Statement::If(if_st) => self.encode_if(if_st),
@@ -115,7 +135,7 @@ impl Encoder {
     }
 
     fn out(&mut self, x: String) {
-        self.output = format!("{}\n{}", self.output, x)
+        self.output = format!("{}{}\n", self.output, x)
     }
 }
 
@@ -131,17 +151,36 @@ mod tests {
 
     #[test]
     fn empty() {
-        assert_eq!(
-            encode_from_source("{}"),
-            ""
-        );
+        assert_eq!(encode_from_source("{}"), "");
     }
 
     #[test]
     fn variable_declaration() {
         assert_eq!(
             encode_from_source("{ let x := 2 }"),
-            "\n(declare-const v_2_0 (_ BitVec 256))\n(define-const _1 (_ BitVec 256) 2)\n(assert (= v_2_0 _1))"
+            "(define-const _1 (_ BitVec 256) 2)\n(define-const v_2_1 (_ BitVec 256) _1)\n"
+        );
+    }
+
+    #[test]
+    fn variable_declaration_empty() {
+        assert_eq!(
+            encode_from_source("{ let x, y }"),
+            "(declare-const v_2_0 (_ BitVec 256))\n(declare-const v_3_0 (_ BitVec 256))\n"
+        );
+    }
+
+    #[test]
+    fn assignment() {
+        assert_eq!(
+            encode_from_source("{ let x, y y := 9}"),
+            vec![
+                "(declare-const v_2_0 (_ BitVec 256))",
+                "(declare-const v_3_0 (_ BitVec 256))",
+                "(define-const _1 (_ BitVec 256) 9)",
+                "(define-const v_3_1 (_ BitVec 256) _1)\n"
+            ]
+            .join("\n")
         );
     }
 }
