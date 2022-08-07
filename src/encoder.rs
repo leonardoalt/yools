@@ -17,7 +17,13 @@ impl Encoder {
 
     // }
 
-    fn encode_block(&mut self, block: &yul::Block) {}
+    fn encode_block(&mut self, block: &yul::Block) {
+        block
+            .statements
+            .iter()
+            .for_each(|st| self.encode_statement(st));
+    }
+
     fn encode_function_def(&mut self, fun: &yul::FunctionDefinition) {}
     fn encode_switch(&mut self, fun: &yul::Switch) {}
     fn encode_for(&mut self, fun: &yul::ForLoop) {}
