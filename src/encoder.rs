@@ -13,7 +13,9 @@ struct SMTVariable {
 }
 
 impl Encoder {
-    fn encode_variable_declaration(&mut self, var: &VariableDeclaration) -> SMTVariable {}
+    // fn encode_variable_declaration(&mut self, var: &VariableDeclaration) -> SMTVariable {
+
+    // }
 
     fn encode_expression(&mut self, expr: &Expression) -> SMTVariable {
         match expr {
@@ -24,17 +26,26 @@ impl Encoder {
     }
 
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
-        let var = new_variable();
+        let var = self.new_variable();
         // TODO encode in hex
-        output += "(define-const " + var.name + " (_ BitVec 256) " + literal.literal + ")";
+//        self.output += "(define-const " + var.name + " (_ BitVec 256) " + literal.literal + ")";
         var
     }
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
-        to_smt_variable(identifier)
+        self.to_smt_variable(identifier)
+    }
+    fn encode_function_call(&mut self, _function: &FunctionCall) -> SMTVariable {
+        // TODO
+        self.new_variable()
     }
 
     fn new_variable(&mut self) -> SMTVariable {
         self.expression_counter += 1;
-        SMTVariable{name: "_" + self.expression_counter.to_string()}
+        SMTVariable{name: format!("_{}", self.expression_counter)}
+    }
+
+    fn to_smt_variable(&mut self, identifier: &Identifier) -> SMTVariable {
+        let id = identifier.id.unwrap();
+        SMTVariable{name: format!("v_{}_{}", id, self.ssa_counter[&id])}
     }
 }
