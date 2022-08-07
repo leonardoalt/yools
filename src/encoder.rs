@@ -13,9 +13,26 @@ struct SMTVariable {
 }
 
 impl Encoder {
-    // fn encode_variable_declaration(&mut self, var: &VariableDeclaration) -> SMTVariable {
-
-    // }
+    fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
+        for v in &var.variables {
+            self.ssa_counter.insert(v.id.unwrap(), 0);
+            self.out(format!(
+                "(declare-const {} (_ BitVec 256))",
+                self.to_smt_variable(v).name
+            ));
+        }
+        if let Some(value) = &var.value {
+            let values = self.encode_expression(value);
+            assert_eq!(values.len(), var.variables.len());
+            for (v, val) in var.variables.iter().zip(values.iter()) {
+                self.out(format!(
+                    "(assert (= {} {}))",
+                    self.to_smt_variable(v).name,
+                    val.name
+                ));
+            }
+        }
+    }
 
     fn encode_block(&mut self, block: &yul::Block) {
         block
@@ -35,7 +52,9 @@ impl Encoder {
             yul::Statement::If(if_st) => self.encode_if(if_st),
             yul::Statement::Switch(switch) => self.encode_switch(switch),
             yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
-            yul::Statement::Expression(expr) => { assert!(self.encode_expression(expr).is_empty()); },
+            yul::Statement::Expression(expr) => {
+                assert!(self.encode_expression(expr).is_empty());
+            }
             _ => {}
         };
     }
@@ -56,7 +75,10 @@ impl Encoder {
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
         let var = self.new_temporary_variable();
         // TODO encode in hex
-        self.out(format!("(define-const {} (_ BitVec 256) {})", &var.name, &literal.literal));
+        self.out(format!(
+            "(define-const {} (_ BitVec 256) {})",
+            &var.name, &literal.literal
+        ));
         var
     }
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
@@ -69,12 +91,16 @@ impl Encoder {
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
         self.expression_counter += 1;
-        SMTVariable{name: format!("_{}", self.expression_counter)}
+        SMTVariable {
+            name: format!("_{}", self.expression_counter),
+        }
     }
 
-    fn to_smt_variable(&mut self, identifier: &Identifier) -> SMTVariable {
+    fn to_smt_variable(&self, identifier: &Identifier) -> SMTVariable {
         let id = identifier.id.unwrap();
-        SMTVariable{name: format!("v_{}_{}", id, self.ssa_counter[& id])}
+        SMTVariable {
+            name: format!("v_{}_{}", id, self.ssa_counter[&id]),
+        }
     }
 
     fn out(&mut self, x: String) {
