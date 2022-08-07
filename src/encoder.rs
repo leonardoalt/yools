@@ -57,6 +57,7 @@ impl Encoder {
 
     fn encode_statement(&mut self, st: &yul::Statement) {
         match st {
+            yul::Statement::VariableDeclaration(var_decl) => self.encode_variable_declaration(var_decl),
             yul::Statement::Block(block) => self.encode_block(block),
             yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
             yul::Statement::If(if_st) => self.encode_if(if_st),
@@ -133,6 +134,14 @@ mod tests {
         assert_eq!(
             encode_from_source("{}"),
             ""
+        );
+    }
+
+    #[test]
+    fn variable_declaration() {
+        assert_eq!(
+            encode_from_source("{ let x := 2 }"),
+            "\n(declare-const v_2_0 (_ BitVec 256))\n(define-const _1 (_ BitVec 256) 2)\n(assert (= v_2_0 _1))"
         );
     }
 }
