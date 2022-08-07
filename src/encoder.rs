@@ -17,10 +17,32 @@ impl Encoder {
 
     // }
 
-    fn encode_expression(&mut self, expr: &Expression) -> SMTVariable {
+    fn encode_block(&mut self, block: &yul::Block) {}
+    fn encode_function_def(&mut self, fun: &yul::FunctionDefinition) {}
+    fn encode_switch(&mut self, fun: &yul::Switch) {}
+    fn encode_for(&mut self, fun: &yul::ForLoop) {}
+
+    fn encode_statement(&mut self, st: &yul::Statement) {
+        match st {
+            yul::Statement::Block(block) => self.encode_block(block),
+            yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
+            yul::Statement::If(if_st) => self.encode_if(if_st),
+            yul::Statement::Switch(switch) => self.encode_switch(switch),
+            yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
+            yul::Statement::Expression(expr) => { assert!(self.encode_expression(expr).is_empty()); },
+            _ => {}
+        };
+    }
+
+    fn encode_if(&mut self, expr: &yul::If) {
+        let cond = self.encode_expression(&expr.condition);
+        let prev_ssa = self.ssa_counter.clone();
+    }
+
+    fn encode_expression(&mut self, expr: &Expression) -> Vec<SMTVariable> {
         match expr {
-            Expression::Literal(literal) => self.encode_literal(literal),
-            Expression::Identifier(identifier) => self.encode_identifier(identifier),
+            Expression::Literal(literal) => vec![self.encode_literal(literal)],
+            Expression::Identifier(identifier) => vec![self.encode_identifier(identifier)],
             Expression::FunctionCall(function) => self.encode_function_call(function),
         }
     }
@@ -34,9 +56,9 @@ impl Encoder {
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
         self.to_smt_variable(identifier)
     }
-    fn encode_function_call(&mut self, _function: &FunctionCall) -> SMTVariable {
+    fn encode_function_call(&mut self, _function: &FunctionCall) -> Vec<SMTVariable> {
         // TODO
-        self.new_temporary_variable()
+        vec![self.new_temporary_variable()]
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
