@@ -123,7 +123,11 @@ impl CFGBuilder {
         self.add_node(from.clone());
         self.add_rev_node(to.clone());
 
-        self.cfg.graph.get_mut(&from).unwrap().push((to.clone(), edge.clone()));
+        self.cfg
+            .graph
+            .get_mut(&from)
+            .unwrap()
+            .push((to.clone(), edge.clone()));
         self.cfg.rev_graph.get_mut(&to).unwrap().push((from, edge));
     }
 
@@ -187,12 +191,7 @@ impl CFGBuilder {
 
         self.function_def_nodes(&fun.name.name);
 
-        let (entry, exit) = self
-            .cfg
-            .functions
-            .get_mut(&fun.name.name)
-            .unwrap()
-            .clone();
+        let (entry, exit) = self.cfg.functions.get_mut(&fun.name.name).unwrap().clone();
 
         self.set_current(entry);
         self.visit_block(&fun.body);
@@ -219,11 +218,7 @@ impl CFGBuilder {
             after_if.clone(),
             Edge::IfFalseBranch(ifs.condition.clone()),
         );
-        self.connect(
-            true_branch.clone(),
-            after_if.clone(),
-            Edge::AfterIf,
-        );
+        self.connect(true_branch.clone(), after_if.clone(), Edge::AfterIf);
 
         self.set_current(true_branch);
         self.visit_block(&ifs.body);
@@ -413,7 +408,8 @@ mod tests {
 
     #[test]
     fn yul_for() {
-        let block = yul_parser::parse_block("{ let a := 2 for { a := 3 } a { a := 4 } { a := 5 } a := 6}");
+        let block =
+            yul_parser::parse_block("{ let a := 2 for { a := 3 } a { a := 4 } { a := 5 } a := 6}");
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 

@@ -5,11 +5,11 @@ use yultsur::yul;
 use std::collections::HashMap;
 
 pub struct SymbExecEngine {
-    ssa: HashMap<yul::Identifier, usize>
+    ssa: HashMap<yul::Identifier, usize>,
 }
 
 struct BV {
-    width: usize
+    width: usize,
 }
 
 struct Expr {
@@ -35,12 +35,13 @@ enum ArithOp {
 impl SymbExecEngine {
     pub fn new() -> SymbExecEngine {
         SymbExecEngine {
-            ssa: HashMap::new()
+            ssa: HashMap::new(),
         }
     }
 
     fn root(cfg: &CFG) -> Node {
-        let roots: Vec<_> = cfg.rev_graph
+        let roots: Vec<_> = cfg
+            .rev_graph
             .iter()
             .filter(|(_, adj)| adj.is_empty())
             .collect();
@@ -56,7 +57,5 @@ impl SymbExecEngine {
         let root = SymbExecEngine::root(&cfg);
 
         println!("{:?}", root);
-
-        
     }
 }
