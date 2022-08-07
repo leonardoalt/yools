@@ -6,5 +6,4 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-yultsur = { git = "file:///home/chris/ethereum/yultsur", branch = "master" }
-#amzn-smt-ir = "^0.1.0"
+yultsur = { git = "https://github.com/leonardoalt/yultsur", branch = "master" }
