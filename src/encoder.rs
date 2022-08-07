@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use yultsur::dialect;
 use yultsur::yul;
 use yultsur::yul::*;
 
@@ -14,6 +15,7 @@ pub fn encode(ast: &Block) -> String {
     encoder.output
 }
 
+#[derive(Clone)]
 struct SMTVariable {
     name: String,
 }
@@ -68,9 +70,9 @@ impl Encoder {
             .for_each(|st| self.encode_statement(st));
     }
 
-    fn encode_function_def(&mut self, fun: &yul::FunctionDefinition) {}
-    fn encode_switch(&mut self, fun: &yul::Switch) {}
-    fn encode_for(&mut self, fun: &yul::ForLoop) {}
+    fn encode_function_def(&mut self, _fun: &yul::FunctionDefinition) {}
+    fn encode_switch(&mut self, _fun: &yul::Switch) {}
+    fn encode_for(&mut self, _fun: &yul::ForLoop) {}
 
     fn encode_statement(&mut self, st: &yul::Statement) {
         match st {
@@ -142,9 +144,28 @@ impl Encoder {
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
         self.to_smt_variable(identifier)
     }
-    fn encode_function_call(&mut self, _function: &FunctionCall) -> Vec<SMTVariable> {
-        // TODO
-        vec![self.new_temporary_variable()]
+    fn encode_function_call(&mut self, call: &FunctionCall) -> Vec<SMTVariable> {
+        let arguments = call
+            .arguments
+            .iter()
+            .map(|arg| {
+                let value = self.encode_expression(arg);
+                assert_eq!(value.len(), 1);
+                // TODO should be possible to move here.
+                value.first().unwrap().clone()
+            })
+            .collect::<Vec<_>>();
+        if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
+            let var = self.new_temporary_variable();
+            self.out(format!(
+                "(define-const {} (_ BitVec 256) {})",
+                &var.name, builtin_call
+            ));
+            vec![var]
+        } else {
+            // TODO user-defined functions
+            vec![self.new_temporary_variable()]
+        }
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
@@ -172,13 +193,23 @@ impl Encoder {
     }
 }
 
+fn encode_builtin(name: &String, arguments: &Vec<SMTVariable>) -> Option<String> {
+    match name.as_str() {
+        "add" => Some(format!(
+            "(bvadd {} {})",
+            arguments[0].name, arguments[1].name
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
-        yultsur::resolver::resolve(&mut ast);
+        yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
         encode(&ast)
     }
 
@@ -218,6 +249,23 @@ mod tests {
     }
 
     #[test]
+    fn builtin_add() {
+        assert_eq!(
+            encode_from_source("{ let y := 1 let x := add(add(2, 3), y) }"),
+            vec![
+                "(define-const _1 (_ BitVec 256) 1)",
+                "(define-const v_2_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) 2)",
+                "(define-const _3 (_ BitVec 256) 3)",
+                "(define-const _4 (_ BitVec 256) (bvadd _2 _3))",
+                "(define-const _5 (_ BitVec 256) (bvadd _4 v_2_1))",
+                "(define-const v_3_1 (_ BitVec 256) _5)\n",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
     fn if_st() {
         assert_eq!(
             encode_from_source("{ let x := 9 let c := 1 if c { x := 666 } }"),
@@ -233,5 +281,4 @@ mod tests {
             .join("\n")
         );
     }
-
 }
