@@ -8,11 +8,21 @@ pub struct Encoder {
     output: String,
 }
 
+pub fn encode(ast: &Block) -> String {
+    let mut encoder = Encoder::new();
+    encoder.encode_block(ast);
+    encoder.output
+}
+
 struct SMTVariable {
     name: String,
 }
 
 impl Encoder {
+    fn new() -> Encoder {
+        Encoder{expression_counter: 0, ssa_counter: HashMap::new(), output: String::new()}
+    }
+
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
             self.ssa_counter.insert(v.id.unwrap(), 0);
@@ -105,5 +115,24 @@ impl Encoder {
 
     fn out(&mut self, x: String) {
         self.output = format!("{}\n{}", self.output, x)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encode_from_source(input: &str) -> String {
+        let mut ast = yultsur::yul_parser::parse_block(input);
+        yultsur::resolver::resolve(&mut ast);
+        encode(&ast)
+    }
+
+    #[test]
+    fn empty() {
+        assert_eq!(
+            encode_from_source("{}"),
+            ""
+        );
     }
 }
