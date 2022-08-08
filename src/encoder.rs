@@ -31,7 +31,8 @@ impl Encoder {
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
-            self.ssa_counter.insert(v.id.unwrap(), 0);
+            let var_id = if let IdentifierID::Declaration(id) = v.id { id } else { panic!(); };
+            self.ssa_counter.insert(var_id, 0);
             if var.value == None {
                 self.out(format!(
                     "(declare-const {} (_ BitVec 256))",
@@ -50,7 +51,12 @@ impl Encoder {
 
     fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, value: &Expression) {
         for v in variables {
-            *self.ssa_counter.get_mut(&v.id.unwrap()).unwrap() += 1;
+            let var_id = match v.id {
+                IdentifierID::Declaration(id) => id,
+                IdentifierID::Reference(id) => id,
+                _ => panic!()
+            };
+            *self.ssa_counter.get_mut(&var_id).unwrap() += 1;
         }
         let values = self.encode_expression(value);
         assert_eq!(values.len(), variables.len());
@@ -182,9 +188,13 @@ impl Encoder {
     }
 
     fn to_smt_variable(&self, identifier: &Identifier) -> SMTVariable {
-        let id = identifier.id.unwrap();
+        let var_id = match identifier.id {
+            IdentifierID::Declaration(id) => id,
+            IdentifierID::Reference(id) => id,
+            _ => panic!()
+        };
         SMTVariable {
-            name: format!("v_{}_{}", id, self.ssa_counter[&id]),
+            name: format!("v_{}_{}", var_id, self.ssa_counter[&var_id]),
         }
     }
 
