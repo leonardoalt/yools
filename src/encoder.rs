@@ -101,14 +101,12 @@ impl Encoder {
     fn encode_if(&mut self, expr: &yul::If) {
         let cond = self.encode_expression(&expr.condition);
         assert!(cond.len() == 1);
-        let prev_ssa = self.ssa_counter.clone();
+        let mut prev_ssa = self.ssa_counter.clone();
 
         self.encode_block(&expr.body);
 
-        let mut merge_ssa = HashMap::<u64, u64>::new();
-
         prev_ssa
-            .iter()
+            .iter_mut()
             .for_each(|(key, value)| {
                 let branch_ssa = *self.ssa_counter.get(key).unwrap();
                 if branch_ssa > *value {
@@ -121,13 +119,11 @@ impl Encoder {
                         self.id_to_smt_variable(*key, *value).name,
                     ));
 
-                    merge_ssa.insert(key.clone(), new_ssa);
-                } else {
-                    merge_ssa.insert(key.clone(), value.clone());
+                    *value = new_ssa;
                 }
             });
 
-        self.ssa_counter = merge_ssa;
+        self.ssa_counter = prev_ssa;
     }
 
     fn encode_expression(&mut self, expr: &Expression) -> Vec<SMTVariable> {
