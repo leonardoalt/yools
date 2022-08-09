@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use yultsur::dialect;
+use yultsur::dialect::*;
 use yultsur::yul;
 use yultsur::yul::*;
 
@@ -161,16 +161,20 @@ impl Encoder {
                 value.first().unwrap().clone()
             })
             .collect::<Vec<_>>();
-        if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
-            let var = self.new_temporary_variable();
-            self.out(format!(
-                "(define-const {} (_ BitVec 256) {})",
-                &var.name, builtin_call
-            ));
-            vec![var]
-        } else {
-            // TODO user-defined functions
-            vec![self.new_temporary_variable()]
+
+        match EVMDialect::builtin(&call.function.name) {
+            Some(fun) => {
+                let builtin_call = encode_builtin(&fun, &arguments);
+                let var = self.new_temporary_variable();
+                self.out(format!(
+                    "(define-const {} (_ BitVec 256) {})",
+                    &var.name, builtin_call
+                ));
+                vec![var]
+            },
+            None =>
+                // TODO user-defined functions
+                vec![self.new_temporary_variable()]
         }
     }
 
@@ -203,14 +207,12 @@ impl Encoder {
     }
 }
 
-fn encode_builtin(name: &String, arguments: &Vec<SMTVariable>) -> Option<String> {
-    match name.as_str() {
-        "add" => Some(format!(
-            "(bvadd {} {})",
-            arguments[0].name, arguments[1].name
-        )),
-        _ => None,
-    }
+fn encode_builtin(builtin: &Builtin, arguments: &Vec<SMTVariable>) -> String {
+    assert!(builtin.name.as_str() == "add");
+    format!(
+        "(bvadd {} {})",
+        arguments[0].name, arguments[1].name
+    )
 }
 
 #[cfg(test)]
@@ -219,7 +221,7 @@ mod tests {
 
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
-        yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
+        yultsur::resolver::resolve::<EVMDialect>(&mut ast);
         encode(&ast)
     }
 
