@@ -38,6 +38,10 @@ pub struct CFG {
     pub functions: HashMap<String, (Node, Node)>,
 }
 
+impl Default for CFG {
+    fn default() -> Self { Self::new() }
+}
+
 impl CFG {
     pub fn new() -> CFG {
         CFG {
@@ -61,6 +65,10 @@ pub struct CFGBuilder {
     // TODO replace \/ by a Stack
     // function name, used by `leave` to find `function_exit` from `cfg.functions`
     fun_defs: Vec<String>,
+}
+
+impl Default for CFGBuilder {
+    fn default() -> Self { Self::new() }
 }
 
 impl CFGBuilder {
@@ -111,11 +119,17 @@ impl CFGBuilder {
     }
 
     fn add_node(&mut self, from: Node) {
-        self.cfg.graph.entry(from).or_insert_with(|| vec![]);
+        self.cfg
+            .graph
+            .entry(from)
+            .or_insert_with(std::vec::Vec::new);
     }
 
     fn add_rev_node(&mut self, to: Node) {
-        self.cfg.rev_graph.entry(to).or_insert_with(|| vec![]);
+        self.cfg
+            .rev_graph
+            .entry(to)
+            .or_insert_with(std::vec::Vec::new);
     }
 
     fn connect(&mut self, from: Node, to: Node, edge: Edge) {
@@ -129,39 +143,39 @@ impl CFGBuilder {
             .push((to.clone(), edge.clone()));
         self.cfg.rev_graph.get_mut(&to).unwrap().push((from, edge));
     }
-    fn is_builtin(fun_name: &String) -> bool {
-        false
-    }
+    // fn is_builtin(_fun_name: &String) -> bool {
+    //     false
+    // }
 
-    fn create_function_def_nodes(&mut self, fun_name: &String) {
-        let fun_entry = self.new_node();
-        let fun_exit = self.new_node();
-        self.cfg
-            .functions
-            .insert(fun_name.clone(), (fun_entry.clone(), fun_exit.clone()));
-    }
+    // fn create_function_def_nodes(&mut self, fun_name: &String) {
+    //     let fun_entry = self.new_node();
+    //     let fun_exit = self.new_node();
+    //     self.cfg
+    //         .functions
+    //         .insert(fun_name.clone(), (fun_entry, fun_exit));
+    // }
 
-    fn function_def_nodes(&mut self, fun_name: &String) -> (Node, Node) {
-        if !self.cfg.functions.contains_key(fun_name) {
-            self.create_function_def_nodes(fun_name);
-        }
+    // fn function_def_nodes(&mut self, fun_name: &String) -> (Node, Node) {
+    //     if !self.cfg.functions.contains_key(fun_name) {
+    //         self.create_function_def_nodes(fun_name);
+    //     }
 
-        self.cfg.functions.get(fun_name).unwrap().clone()
-    }
+    //     self.cfg.functions.get(fun_name).unwrap().clone()
+    // }
 
-    fn create_function_def_cfg(&mut self, fun: &yul::FunctionDefinition) {
-        assert!(self.statement_acc.is_empty());
+    // fn create_function_def_cfg(&mut self, fun: &yul::FunctionDefinition) {
+    //     assert!(self.statement_acc.is_empty());
 
-        self.function_def_nodes(&fun.name.name);
+    //     self.function_def_nodes(&fun.name.name);
 
-        let (entry, exit) = self.cfg.functions.get_mut(&fun.name.name).unwrap().clone();
+    //     let (entry, exit) = self.cfg.functions.get_mut(&fun.name.name).unwrap().clone();
 
-        self.set_current(entry);
-        self.visit_block(&fun.body);
-        self.save_acc();
+    //     self.set_current(entry);
+    //     self.visit_block(&fun.body);
+    //     self.save_acc();
 
-        self.connect(self.current.clone(), exit, Edge::Empty);
-    }
+    //     self.connect(self.current.clone(), exit, Edge::Empty);
+    // }
 }
 
 impl ASTVisitor for CFGBuilder {
@@ -225,7 +239,7 @@ impl ASTVisitor for CFGBuilder {
             );
             self.connect(case_node.clone(), after.clone(), Edge::AfterSwitch);
 
-            self.set_current(case_node.clone());
+            self.set_current(case_node);
             self.visit_block(&case.body);
             self.save_acc();
         });

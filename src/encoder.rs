@@ -207,7 +207,7 @@ impl Encoder {
     }
 }
 
-fn encode_builtin(name: &str, arguments: &Vec<SMTVariable>) -> Option<String> {
+fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
     match name {
         "add" => Some("bvadd"),
         "sub" => Some("bvsub"),
