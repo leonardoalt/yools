@@ -2,6 +2,8 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 
+use yultsur::dialect::EVMDialect;
+use yultsur::resolver::resolve;
 use yultsur::yul_parser;
 
 fn main() {
@@ -11,7 +13,8 @@ fn main() {
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
 
-    let ast = yul_parser::parse_block(&content);
+    let mut ast = yul_parser::parse_block(&content);
+    let signatures = resolve::<EVMDialect>(&mut ast);
 
-    yools::encoder::encode(&ast);
+    println!("{}", yools::encoder::encode(&ast, signatures));
 }
