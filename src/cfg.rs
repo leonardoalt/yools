@@ -104,7 +104,7 @@ impl CFGBuilder {
         self.cfg.blocks.insert(
             self.current.clone(),
             yul::Block {
-                statements: std::mem::take(&mut self.statement_acc)
+                statements: std::mem::take(&mut self.statement_acc),
             },
         );
         // TODO assert that the insertion happened
@@ -162,18 +162,20 @@ impl CFGBuilder {
 
         self.connect(self.current.clone(), exit, Edge::Empty);
     }
-
 }
 
 impl ASTVisitor for CFGBuilder {
     fn enter_variable_declaration(&mut self, variable: &yul::VariableDeclaration) {
-        self.statement_acc.push(yul::Statement::VariableDeclaration(variable.clone()));
+        self.statement_acc
+            .push(yul::Statement::VariableDeclaration(variable.clone()));
     }
     fn enter_assignment(&mut self, assignment: &yul::Assignment) {
-        self.statement_acc.push(yul::Statement::Assignment(assignment.clone()));
+        self.statement_acc
+            .push(yul::Statement::Assignment(assignment.clone()));
     }
     fn enter_expression(&mut self, expression: &yul::Expression) {
-        self.statement_acc.push(yul::Statement::Expression(expression.clone()));
+        self.statement_acc
+            .push(yul::Statement::Expression(expression.clone()));
     }
 
     fn visit_if(&mut self, ifs: &yul::If) {
@@ -232,7 +234,8 @@ impl ASTVisitor for CFGBuilder {
     }
 
     fn visit_for(&mut self, for_loop: &yul::ForLoop) {
-        self.statement_acc.append(&mut for_loop.pre.statements.clone());
+        self.statement_acc
+            .append(&mut for_loop.pre.statements.clone());
         self.save_acc();
 
         let header = self.new_node();

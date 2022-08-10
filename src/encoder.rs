@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use yultsur::dialect::*;
 use yultsur::yul;
 use yultsur::yul::*;
 
@@ -31,7 +30,11 @@ impl Encoder {
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
-            let var_id = if let IdentifierID::Declaration(id) = v.id { id } else { panic!(); };
+            let var_id = if let IdentifierID::Declaration(id) = v.id {
+                id
+            } else {
+                panic!();
+            };
             self.ssa_counter.insert(var_id, 0);
             if var.value == None {
                 self.out(format!(
@@ -54,7 +57,7 @@ impl Encoder {
             let var_id = match v.id {
                 IdentifierID::Declaration(id) => id,
                 IdentifierID::Reference(id) => id,
-                _ => panic!()
+                _ => panic!(),
             };
             *self.ssa_counter.get_mut(&var_id).unwrap() += 1;
         }
@@ -105,23 +108,21 @@ impl Encoder {
 
         self.encode_block(&expr.body);
 
-        prev_ssa
-            .iter_mut()
-            .for_each(|(key, value)| {
-                let branch_ssa = *self.ssa_counter.get(key).unwrap();
-                if branch_ssa > *value {
-                    let new_ssa = branch_ssa + 1;
-                    self.out(format!(
-                        "(define-const {} (_ BitVec 256) (ite {} {} {})",
-                        self.id_to_smt_variable(*key, new_ssa).name,
-                        cond[0].name,
-                        self.id_to_smt_variable(*key, branch_ssa).name,
-                        self.id_to_smt_variable(*key, *value).name,
-                    ));
+        prev_ssa.iter_mut().for_each(|(key, value)| {
+            let branch_ssa = *self.ssa_counter.get(key).unwrap();
+            if branch_ssa > *value {
+                let new_ssa = branch_ssa + 1;
+                self.out(format!(
+                    "(define-const {} (_ BitVec 256) (ite {} {} {})",
+                    self.id_to_smt_variable(*key, new_ssa).name,
+                    cond[0].name,
+                    self.id_to_smt_variable(*key, branch_ssa).name,
+                    self.id_to_smt_variable(*key, *value).name,
+                ));
 
-                    *value = new_ssa;
-                }
-            });
+                *value = new_ssa;
+            }
+        });
 
         self.ssa_counter = prev_ssa;
     }
@@ -158,19 +159,22 @@ impl Encoder {
             })
             .collect::<Vec<_>>();
 
-        match EVMDialect::builtin(&call.function.name) {
-            Some(fun) => {
-                let builtin_call = encode_builtin(&fun, &arguments);
+        match call.function.id {
+            IdentifierID::BuiltinReference => {
                 let var = self.new_temporary_variable();
-                self.out(format!(
-                    "(define-const {} (_ BitVec 256) {})",
-                    &var.name, builtin_call
-                ));
+                if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
+                    self.out(format!(
+                        "(define-const {} (_ BitVec 256) {})",
+                        &var.name, builtin_call
+                    ));
+                };
                 vec![var]
-            },
-            None =>
+            }
+            IdentifierID::Reference(_) => {
                 // TODO user-defined functions
                 vec![self.new_temporary_variable()]
+            }
+            _ => panic!(),
         }
     }
 
@@ -191,7 +195,7 @@ impl Encoder {
         let var_id = match identifier.id {
             IdentifierID::Declaration(id) => id,
             IdentifierID::Reference(id) => id,
-            _ => panic!()
+            _ => panic!(),
         };
         SMTVariable {
             name: format!("v_{}_{}", var_id, self.ssa_counter[&var_id]),
@@ -203,17 +207,33 @@ impl Encoder {
     }
 }
 
-fn encode_builtin(builtin: &Builtin, arguments: &Vec<SMTVariable>) -> String {
-    assert!(builtin.name.as_str() == "add");
-    format!(
-        "(bvadd {} {})",
-        arguments[0].name, arguments[1].name
-    )
+fn encode_builtin(name: &str, arguments: &Vec<SMTVariable>) -> Option<String> {
+    match name {
+        "add" => Some("bvadd"),
+        "sub" => Some("bvsub"),
+        "mul" => Some("bvmul"),
+        "div" => Some("bvdiv"),
+        "sdiv" => Some("bvsdiv"),
+        "not" => Some("bvnot"),
+        "lt" => Some("bvult"),
+        "gt" => Some("bvugt"),
+        "slt" => Some("bvslt"),
+        "sgt" => Some("bvsgt"),
+        "eq" => Some("="),
+        "and" => Some("bvand"),
+        "or" => Some("bvor"),
+        "xor" => Some("bvxor"),
+        _ => None,
+    }
+    .map(|smt_name| format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name))
+
+    // TODO ISZERO
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use yultsur::dialect::*;
 
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
