@@ -1,15 +1,18 @@
 use std::collections::HashMap;
+use yultsur::dialect::{Dialect, EVMDialect};
+use yultsur::resolver::FunctionSignature;
 use yultsur::yul;
 use yultsur::yul::*;
 
 pub struct Encoder {
+    function_signatures: HashMap<u64, FunctionSignature>,
     expression_counter: u64,
     ssa_counter: HashMap<u64, u64>,
     output: String,
 }
 
-pub fn encode(ast: &Block) -> String {
-    let mut encoder = Encoder::new();
+pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
+    let mut encoder = Encoder::new(function_signatures);
     encoder.encode_block(ast);
     encoder.output
 }
@@ -20,8 +23,9 @@ struct SMTVariable {
 }
 
 impl Encoder {
-    fn new() -> Encoder {
+    fn new(function_signatures: HashMap<u64, FunctionSignature>) -> Encoder {
         Encoder {
+            function_signatures,
             expression_counter: 0,
             ssa_counter: HashMap::new(),
             output: String::new(),
@@ -152,29 +156,38 @@ impl Encoder {
             .arguments
             .iter()
             .map(|arg| {
-                let value = self.encode_expression(arg);
+                let mut value = self.encode_expression(arg);
                 assert_eq!(value.len(), 1);
-                // TODO should be possible to move here.
-                value.first().unwrap().clone()
+                value.pop().unwrap()
             })
             .collect::<Vec<_>>();
 
         match call.function.id {
             IdentifierID::BuiltinReference => {
-                let var = self.new_temporary_variable();
+                let returns = EVMDialect::builtin(&call.function.name).unwrap().returns;
+                let vars: Vec<SMTVariable> = (0..returns)
+                    .map(|_i| self.new_temporary_variable())
+                    .collect();
                 if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
+                    assert_eq!(returns, 1);
                     self.out(format!(
                         "(define-const {} (_ BitVec 256) {})",
-                        &var.name, builtin_call
+                        &vars.first().unwrap().name,
+                        builtin_call
                     ));
-                };
-                vec![var]
+                }
+                vars
             }
-            IdentifierID::Reference(_) => {
-                // TODO user-defined functions
-                vec![self.new_temporary_variable()]
+            IdentifierID::Reference(id) => {
+                let returns = self.function_signatures[&id].returns;
+                (0..returns)
+                    .map(|_i| self.new_temporary_variable())
+                    .collect()
             }
-            _ => panic!(),
+            _ => panic!(
+                "Unexpected reference in function call: {:?}",
+                call.function.id
+            ),
         }
     }
 
@@ -237,8 +250,8 @@ mod tests {
 
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
-        yultsur::resolver::resolve::<EVMDialect>(&mut ast);
-        encode(&ast)
+        let signatures = yultsur::resolver::resolve::<EVMDialect>(&mut ast);
+        encode(&ast, signatures)
     }
 
     #[test]

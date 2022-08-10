@@ -14,7 +14,7 @@ fn main() {
     file.read_to_string(&mut content).unwrap();
 
     let mut ast = yul_parser::parse_block(&content);
-    resolve::<EVMDialect>(&mut ast);
+    let signatures = resolve::<EVMDialect>(&mut ast);
 
-    yools::encoder::encode(&ast);
+    println!("{}", yools::encoder::encode(&ast, signatures));
 }

@@ -39,7 +39,9 @@ pub struct CFG {
 }
 
 impl Default for CFG {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CFG {
@@ -68,7 +70,9 @@ pub struct CFGBuilder {
 }
 
 impl Default for CFGBuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CFGBuilder {
