@@ -143,8 +143,9 @@ impl Encoder {
         let var = self.new_temporary_variable();
         // TODO encode in hex
         self.out(format!(
-            "(define-const {} (_ BitVec 256) {})",
-            &var.name, &literal.literal
+            "(define-const {} (_ BitVec 256) #x{:064X})",
+            &var.name,
+            &literal.literal.parse::<u128>().unwrap()
         ));
         var
     }

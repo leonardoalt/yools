@@ -1,6 +1,10 @@
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
+use std::process::Command;
+
+use std::io::Write;
+use tempfile::NamedTempFile;
 
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
@@ -16,5 +20,25 @@ fn main() {
     let mut ast = yul_parser::parse_block(&content);
     let signatures = resolve::<EVMDialect>(&mut ast);
 
-    println!("{}", yools::encoder::encode(&ast, signatures));
+    let query = yools::encoder::encode(&ast, signatures);
+    let query = format!("{}\n{}", query, "(check-sat)");
+
+    let mut file = NamedTempFile::new().unwrap();
+    file.write(query.as_bytes()).unwrap();
+
+    let output = Command::new("cvc5")
+        .args(["--lang", "smt2"])
+        .args([file.path()])
+        .output()
+        .expect("failed to run query");
+
+    match String::from_utf8(output.stdout).unwrap().as_str() {
+        "sat\n" => {
+            println!("SAT");
+        }
+        "unsat\n" => {
+            println!("UNSAT");
+        }
+        _ => {}
+    };
 }
