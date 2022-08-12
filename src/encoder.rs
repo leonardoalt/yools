@@ -264,7 +264,7 @@ mod tests {
     fn variable_declaration() {
         assert_eq!(
             encode_from_source("{ let x := 2 }"),
-            "(define-const _1 (_ BitVec 256) 2)\n(define-const v_2_1 (_ BitVec 256) _1)\n"
+            "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)\n(define-const v_2_1 (_ BitVec 256) _1)\n"
         );
     }
 
@@ -283,7 +283,7 @@ mod tests {
             vec![
                 "(declare-const v_2_0 (_ BitVec 256))",
                 "(declare-const v_3_0 (_ BitVec 256))",
-                "(define-const _1 (_ BitVec 256) 9)",
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
                 "(define-const v_3_1 (_ BitVec 256) _1)\n"
             ]
             .join("\n")
@@ -295,10 +295,10 @@ mod tests {
         assert_eq!(
             encode_from_source("{ let y := 1 let x := add(add(2, 3), y) }"),
             vec![
-                "(define-const _1 (_ BitVec 256) 1)",
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
                 "(define-const v_2_1 (_ BitVec 256) _1)",
-                "(define-const _2 (_ BitVec 256) 2)",
-                "(define-const _3 (_ BitVec 256) 3)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
                 "(define-const _4 (_ BitVec 256) (bvadd _2 _3))",
                 "(define-const _5 (_ BitVec 256) (bvadd _4 v_2_1))",
                 "(define-const v_3_1 (_ BitVec 256) _5)\n",
@@ -312,11 +312,11 @@ mod tests {
         assert_eq!(
             encode_from_source("{ let x := 9 let c := 1 if c { x := 666 } }"),
             vec![
-                "(define-const _1 (_ BitVec 256) 9)",
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
                 "(define-const v_2_1 (_ BitVec 256) _1)",
-                "(define-const _2 (_ BitVec 256) 1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
                 "(define-const v_3_1 (_ BitVec 256) _2)",
-                "(define-const _3 (_ BitVec 256) 666)",
+                "(define-const _3 (_ BitVec 256) #x000000000000000000000000000000000000000000000000000000000000029A)",
                 "(define-const v_2_2 (_ BitVec 256) _3)",
                 "(define-const v_2_3 (_ BitVec 256) (ite v_3_1 v_2_2 v_2_1)\n"
             ]
