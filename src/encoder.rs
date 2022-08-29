@@ -5,7 +5,7 @@ use yultsur::yul;
 use yultsur::yul::*;
 
 struct Context {
-    revert_flag: Identifier
+    revert_flag: Identifier,
 }
 
 impl Context {
@@ -14,7 +14,6 @@ impl Context {
             revert_flag: Identifier {
                 id: IdentifierID::Declaration(666),
                 name: "revert_flag".to_string(),
-                yultype: None
             },
         }
     }
@@ -59,8 +58,8 @@ impl Encoder {
 
     fn encode_context_init(&mut self) {
         let v = VariableDeclaration {
-            variables: vec![ self.context.revert_flag.clone() ],
-            value: Some(Expression::Literal(Literal::new("0")))
+            variables: vec![self.context.revert_flag.clone()],
+            value: Some(Expression::Literal(Literal::new("0"))),
         };
 
         self.encode_variable_declaration(&v);
@@ -217,18 +216,13 @@ impl Encoder {
                         builtin_call
                     ));
                 }
-                match call.function.name.as_str() {
-                    "revert" => {
-                        let v = vec![
-                            Identifier {
-                                id: IdentifierID::Reference(666),
-                                name: "revert_flag".to_string(),
-                                yultype: None
-                            }];
-                        let e = Expression::Literal(Literal::new("1"));
-                        self.encode_assignment_inner(&v, &e);
-                    },
-                    _ => {}
+                if call.function.name.as_str() == "revert" {
+                    let v = vec![Identifier {
+                        id: IdentifierID::Reference(666),
+                        name: "revert_flag".to_string(),
+                    }];
+                    let e = Expression::Literal(Literal::new("1"));
+                    self.encode_assignment_inner(&v, &e);
                 }
                 vars
             }
@@ -275,13 +269,7 @@ impl Encoder {
 }
 
 fn is_bool_function(name: &str) -> bool {
-    match name {
-        "bvult" => true,
-        "bvugt" => true,
-        "bvslt" => true,
-        "bvsgt" => true,
-        _ => false
-    }
+    matches!(name, "bvult" | "bvugt" | "bvslt" | "bvsgt")
 }
 
 fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
