@@ -4,16 +4,34 @@ use yultsur::resolver::FunctionSignature;
 use yultsur::yul;
 use yultsur::yul::*;
 
+struct Context {
+    revert_flag: Identifier
+}
+
+impl Context {
+    fn new() -> Context {
+        Context {
+            revert_flag: Identifier {
+                id: IdentifierID::Declaration(666),
+                name: "revert_flag".to_string(),
+                yultype: None
+            },
+        }
+    }
+}
+
 pub struct Encoder {
     function_signatures: HashMap<u64, FunctionSignature>,
     expression_counter: u64,
     ssa_counter: HashMap<u64, u64>,
     output: String,
+    context: Context,
 }
 
 pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
     let mut encoder = Encoder::new(function_signatures);
-    encoder.encode_block(ast);
+    //encoder.encode_block(ast);
+    encoder.encode(ast);
     encoder.output
 }
 
@@ -29,7 +47,23 @@ impl Encoder {
             expression_counter: 0,
             ssa_counter: HashMap::new(),
             output: String::new(),
+            context: Context::new(),
         }
+    }
+
+    pub fn encode(&mut self, block: &Block) {
+        self.encode_context_init();
+        self.encode_block(block);
+        self.encode_revert_query();
+    }
+
+    fn encode_context_init(&mut self) {
+        let v = VariableDeclaration {
+            variables: vec![ self.context.revert_flag.clone() ],
+            value: Some(Expression::Literal(Literal::new("0")))
+        };
+
+        self.encode_variable_declaration(&v);
     }
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
@@ -117,7 +151,7 @@ impl Encoder {
             if branch_ssa > *value {
                 let new_ssa = branch_ssa + 1;
                 self.out(format!(
-                    "(define-const {} (_ BitVec 256) (ite {} {} {})",
+                    "(define-const {} (_ BitVec 256) (ite {} {} {}))",
                     self.id_to_smt_variable(*key, new_ssa).name,
                     cond[0].name,
                     self.id_to_smt_variable(*key, branch_ssa).name,
@@ -149,9 +183,11 @@ impl Encoder {
         ));
         var
     }
+
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
         self.to_smt_variable(identifier)
     }
+
     fn encode_function_call(&mut self, call: &FunctionCall) -> Vec<SMTVariable> {
         let arguments = call
             .arguments
@@ -169,13 +205,27 @@ impl Encoder {
                 let vars: Vec<SMTVariable> = (0..returns)
                     .map(|_i| self.new_temporary_variable())
                     .collect();
-                if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
+                if let Some((builtin_call, sort)) = encode_builtin(&call.function.name, &arguments) {
                     assert_eq!(returns, 1);
                     self.out(format!(
-                        "(define-const {} (_ BitVec 256) {})",
+                        "(define-const {} {} {})",
                         &vars.first().unwrap().name,
+                        sort,
                         builtin_call
                     ));
+                }
+                match call.function.name.as_str() {
+                    "revert" => {
+                        let v = vec![
+                            Identifier {
+                                id: IdentifierID::Reference(666),
+                                name: "revert_flag".to_string(),
+                                yultype: None
+                            }];
+                        let e = Expression::Literal(Literal::new("1"));
+                        self.encode_assignment_inner(&v, &e);
+                    },
+                    _ => {}
                 }
                 vars
             }
@@ -190,6 +240,23 @@ impl Encoder {
                 call.function.id
             ),
         }
+    }
+
+    fn encode_revert_query(&mut self) {
+        let r = Identifier {
+            id: IdentifierID::Reference(666),
+            name: "revert_flag".to_string(),
+            yultype: None
+        };
+        let f = FunctionCall {
+            function: Identifier {
+                id: IdentifierID::BuiltinReference,
+                name: "lt".to_string(),
+                yultype: None
+            },
+            arguments: vec![Expression::Identifier(r), Expression::Literal(Literal::new("0"))]
+        };
+        self.encode_function_call(&f);
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
@@ -221,25 +288,25 @@ impl Encoder {
     }
 }
 
-fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
+fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<(String, String)> {
     match name {
-        "add" => Some("bvadd"),
-        "sub" => Some("bvsub"),
-        "mul" => Some("bvmul"),
-        "div" => Some("bvdiv"),
-        "sdiv" => Some("bvsdiv"),
-        "not" => Some("bvnot"),
-        "lt" => Some("bvult"),
-        "gt" => Some("bvugt"),
-        "slt" => Some("bvslt"),
-        "sgt" => Some("bvsgt"),
-        "eq" => Some("="),
-        "and" => Some("bvand"),
-        "or" => Some("bvor"),
-        "xor" => Some("bvxor"),
+        "add" => Some(("bvadd", "(_ BitVec 256)")),
+        "sub" => Some(("bvsub", "(_ BitVec 256)")),
+        "mul" => Some(("bvmul", "(_ BitVec 256)")),
+        "div" => Some(("bvdiv", "(_ BitVec 256)")),
+        "sdiv" => Some(("bvsdiv", "(_ BitVec 256)")),
+        "not" => Some(("bvnot", "(_ BitVec 256)")),
+        "lt" => Some(("bvult", "Bool")),
+        "gt" => Some(("bvugt", "Bool")),
+        "slt" => Some(("bvslt", "Bool")),
+        "sgt" => Some(("bvsgt", "Bool")),
+        "eq" => Some(("=", "Bool")),
+        "and" => Some(("bvand", "(_ BitVec 256)")),
+        "or" => Some(("bvor", "(_ BitVec 256)")),
+        "xor" => Some(("bvxor", "(_ BitVec 256)")),
         _ => None,
     }
-    .map(|smt_name| format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name))
+    .map(|(smt_name, sort)| (format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name), sort.to_string()))
 
     // TODO ISZERO
 }

@@ -21,7 +21,9 @@ fn main() {
     let signatures = resolve::<EVMDialect>(&mut ast);
 
     let query = yools::encoder::encode(&ast, signatures);
-    let query = format!("{}\n{}", query, "(check-sat)");
+    let query = format!("{}\n{}", query, "(assert (not (= v_666_3 #x0000000000000000000000000000000000000000000000000000000000000000)))\n(check-sat)");
+
+    println!("{}", query);
 
     let mut file = NamedTempFile::new().unwrap();
     file.write(query.as_bytes()).unwrap();
