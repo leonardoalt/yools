@@ -54,7 +54,7 @@ impl Encoder {
     pub fn encode(&mut self, block: &Block) {
         self.encode_context_init();
         self.encode_block(block);
-        self.encode_revert_query();
+        self.encode_no_revert();
     }
 
     fn encode_context_init(&mut self) {
@@ -64,6 +64,10 @@ impl Encoder {
         };
 
         self.encode_variable_declaration(&v);
+    }
+
+    fn encode_no_revert(&mut self) {
+        self.out(format!("(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))", self.to_smt_variable(&self.context.revert_flag).name));
     }
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
@@ -239,23 +243,6 @@ impl Encoder {
                 call.function.id
             ),
         }
-    }
-
-    fn encode_revert_query(&mut self) {
-        let r = Identifier {
-            id: IdentifierID::Reference(666),
-            name: "revert_flag".to_string(),
-            yultype: None
-        };
-        let f = FunctionCall {
-            function: Identifier {
-                id: IdentifierID::BuiltinReference,
-                name: "lt".to_string(),
-                yultype: None
-            },
-            arguments: vec![Expression::Identifier(r), Expression::Literal(Literal::new("0"))]
-        };
-        self.encode_function_call(&f);
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
