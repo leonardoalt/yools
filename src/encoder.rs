@@ -34,9 +34,17 @@ pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>)
     encoder.output
 }
 
-#[derive(Clone)]
-struct SMTVariable {
-    name: String,
+#[derive(Clone, Debug, PartialEq)]
+pub struct SMTVariable {
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionVariables {
+    /// smtlib2 names of the initial values of the function parameters
+    pub parameters: Vec<SMTVariable>,
+    /// smtlib2 names of the final values of the function return variables
+    pub returns: Vec<SMTVariable>,
 }
 
 impl Encoder {
@@ -54,6 +62,29 @@ impl Encoder {
         self.encode_context_init();
         self.encode_block(block);
         self.encode_no_revert();
+    }
+
+    /// Encodes the given function, potentially re-creating copies of all local variables
+    /// if called multiple times.
+    /// @returns the names of the function parameters and return variables.
+    pub fn encode_function(&mut self, function: &FunctionDefinition) -> FunctionVariables {
+        self.encode_variable_declaration(&VariableDeclaration {
+            variables: function.parameters.clone(),
+            value: None,
+        });
+        let parameters = self.to_smt_variables(&function.parameters);
+        for r in &function.returns {
+            self.encode_variable_declaration(&VariableDeclaration {
+                variables: vec![r.clone()],
+                value: Some(Expression::Literal(Literal::new("0"))),
+            });
+        }
+        self.encode_block(&function.body);
+        let returns = self.to_smt_variables(&function.returns);
+        FunctionVariables {
+            parameters,
+            returns,
+        }
     }
 
     fn encode_context_init(&mut self) {
@@ -76,7 +107,10 @@ impl Encoder {
             } else {
                 panic!();
             };
-            self.ssa_counter.insert(var_id, 0);
+            self.ssa_counter
+                .entry(var_id)
+                .and_modify(|c| *c += 1)
+                .or_insert(0);
             if var.value == None {
                 self.out(format!(
                     "(declare-const {} (_ BitVec 256))",
@@ -263,6 +297,13 @@ impl Encoder {
         }
     }
 
+    fn to_smt_variables(&self, identifiers: &[Identifier]) -> Vec<SMTVariable> {
+        identifiers
+            .iter()
+            .map(|i| self.to_smt_variable(i))
+            .collect()
+    }
+
     fn out(&mut self, x: String) {
         self.output = format!("{}{}\n", self.output, x)
     }
@@ -306,6 +347,18 @@ mod tests {
         let mut ast = yultsur::yul_parser::parse_block(input);
         let signatures = yultsur::resolver::resolve::<EVMDialect>(&mut ast);
         encode(&ast, signatures)
+    }
+
+    fn encode_function_from_source(input: &str) -> (String, FunctionVariables) {
+        let mut ast = yultsur::yul_parser::parse_block(input);
+        let signatures = yultsur::resolver::resolve::<EVMDialect>(&mut ast);
+        let mut encoder = Encoder::new(signatures);
+        if let Statement::FunctionDefinition(fun) = &ast.statements[0] {
+            let variables = encoder.encode_function(&fun);
+            return (encoder.output, variables);
+        } else {
+            panic!()
+        }
     }
 
     fn assert_encoded(input: &str, expectation: &String) {
@@ -418,6 +471,36 @@ mod tests {
                 "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
+        );
+    }
+
+    #[test]
+    fn function() {
+        let (output, variables) =
+            encode_function_from_source("{ function f(a, b) -> c { c := b } }");
+        assert_eq!(output,
+                vec![
+                    "(declare-const v_3_0 (_ BitVec 256))",
+                    "(declare-const v_4_0 (_ BitVec 256))",
+                    "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                    "(define-const v_5_1 (_ BitVec 256) _1)",
+                    "(define-const v_5_2 (_ BitVec 256) v_4_0)\n"
+                ].join("\n"));
+        assert_eq!(
+            variables,
+            FunctionVariables {
+                parameters: vec![
+                    SMTVariable {
+                        name: String::from("v_3_0")
+                    },
+                    SMTVariable {
+                        name: String::from("v_4_0")
+                    }
+                ],
+                returns: vec![SMTVariable {
+                    name: String::from("v_5_2")
+                }],
+            }
         );
     }
 }
