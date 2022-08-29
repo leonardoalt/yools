@@ -313,7 +313,6 @@ fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yultsur::dialect::*;
 
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
@@ -321,36 +320,74 @@ mod tests {
         encode(&ast, signatures)
     }
 
+    fn assert_encoded(input: &str, expectation: &String) {
+        let encoded = encode_from_source(input);
+        assert!(
+            encoded == *expectation,
+            "Invaling encoding. Expected:\n{:?}\nTo fix, update to:\n{}\n",
+            expectation,
+            encoded
+                .split("\n")
+                .map(|l| format!("\"{l}\",\n"))
+                .collect::<String>()
+        );
+    }
+
     #[test]
     fn empty() {
-        assert_eq!(encode_from_source("{}"), "");
+        assert_encoded(
+            "{}",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")
+        );
     }
 
     #[test]
     fn variable_declaration() {
-        assert_eq!(
-            encode_from_source("{ let x := 2 }"),
-            "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)\n(define-const v_2_1 (_ BitVec 256) _1)\n"
+        assert_encoded(
+            "{ let x := 2 }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
+                "(define-const v_2_1 (_ BitVec 256) _2)",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")
         );
     }
 
     #[test]
     fn variable_declaration_empty() {
-        assert_eq!(
-            encode_from_source("{ let x, y }"),
-            "(declare-const v_2_0 (_ BitVec 256))\n(declare-const v_3_0 (_ BitVec 256))\n"
-        );
+        assert_encoded(
+            "{ let x, y }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(declare-const v_2_0 (_ BitVec 256))",
+                "(declare-const v_3_0 (_ BitVec 256))",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")       
+         );
     }
 
     #[test]
     fn assignment() {
-        assert_eq!(
-            encode_from_source("{ let x, y y := 9}"),
-            vec![
+        assert_encoded(
+            "{ let x, y y := 9}",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
                 "(declare-const v_2_0 (_ BitVec 256))",
                 "(declare-const v_3_0 (_ BitVec 256))",
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
-                "(define-const v_3_1 (_ BitVec 256) _1)\n"
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
+                "(define-const v_3_1 (_ BitVec 256) _2)",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -358,16 +395,19 @@ mod tests {
 
     #[test]
     fn builtin_add() {
-        assert_eq!(
-            encode_from_source("{ let y := 1 let x := add(add(2, 3), y) }"),
-            vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
-                "(define-const v_2_1 (_ BitVec 256) _1)",
-                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
-                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
-                "(define-const _4 (_ BitVec 256) (bvadd _2 _3))",
-                "(define-const _5 (_ BitVec 256) (bvadd _4 v_2_1))",
-                "(define-const v_3_1 (_ BitVec 256) _5)\n",
+        assert_encoded(
+            "{ let y := 1 let x := add(add(2, 3), y) }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
+                "(define-const v_2_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
+                "(define-const _4 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
+                "(define-const _5 (_ BitVec 256) (bvadd _3 _4))",
+                "(define-const _6 (_ BitVec 256) (bvadd _5 v_2_1))",
+                "(define-const v_3_1 (_ BitVec 256) _6)",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -375,16 +415,19 @@ mod tests {
 
     #[test]
     fn if_st() {
-        assert_eq!(
-            encode_from_source("{ let x := 9 let c := 1 if c { x := 666 } }"),
-            vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
-                "(define-const v_2_1 (_ BitVec 256) _1)",
-                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
-                "(define-const v_3_1 (_ BitVec 256) _2)",
-                "(define-const _3 (_ BitVec 256) #x000000000000000000000000000000000000000000000000000000000000029A)",
-                "(define-const v_2_2 (_ BitVec 256) _3)",
-                "(define-const v_2_3 (_ BitVec 256) (ite v_3_1 v_2_2 v_2_1)\n"
+        assert_encoded(
+            "{ let x := 9 let c := 1 if c { x := 666 } }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
+                "(define-const v_2_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
+                "(define-const v_3_1 (_ BitVec 256) _3)",
+                "(define-const _4 (_ BitVec 256) #x000000000000000000000000000000000000000000000000000000000000029A)",
+                "(define-const v_2_2 (_ BitVec 256) _4)",
+                "(define-const v_2_3 (_ BitVec 256) (ite (= v_3_1 #x0000000000000000000000000000000000000000000000000000000000000000) v_2_1 v_2_2))",
+                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
