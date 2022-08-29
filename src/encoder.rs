@@ -151,11 +151,11 @@ impl Encoder {
             if branch_ssa > *value {
                 let new_ssa = branch_ssa + 1;
                 self.out(format!(
-                    "(define-const {} (_ BitVec 256) (ite {} {} {}))",
+                    "(define-const {} (_ BitVec 256) (ite (= {} #x0000000000000000000000000000000000000000000000000000000000000000) {} {}))",
                     self.id_to_smt_variable(*key, new_ssa).name,
                     cond[0].name,
-                    self.id_to_smt_variable(*key, branch_ssa).name,
                     self.id_to_smt_variable(*key, *value).name,
+                    self.id_to_smt_variable(*key, branch_ssa).name,
                 ));
 
                 *value = new_ssa;
@@ -205,12 +205,11 @@ impl Encoder {
                 let vars: Vec<SMTVariable> = (0..returns)
                     .map(|_i| self.new_temporary_variable())
                     .collect();
-                if let Some((builtin_call, sort)) = encode_builtin(&call.function.name, &arguments) {
+                if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
                     assert_eq!(returns, 1);
                     self.out(format!(
-                        "(define-const {} {} {})",
+                        "(define-const {} (_ BitVec 256) {})",
                         &vars.first().unwrap().name,
-                        sort,
                         builtin_call
                     ));
                 }
@@ -288,25 +287,38 @@ impl Encoder {
     }
 }
 
-fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<(String, String)> {
+fn is_bool_function(name: &str) -> bool {
     match name {
-        "add" => Some(("bvadd", "(_ BitVec 256)")),
-        "sub" => Some(("bvsub", "(_ BitVec 256)")),
-        "mul" => Some(("bvmul", "(_ BitVec 256)")),
-        "div" => Some(("bvdiv", "(_ BitVec 256)")),
-        "sdiv" => Some(("bvsdiv", "(_ BitVec 256)")),
-        "not" => Some(("bvnot", "(_ BitVec 256)")),
-        "lt" => Some(("bvult", "Bool")),
-        "gt" => Some(("bvugt", "Bool")),
-        "slt" => Some(("bvslt", "Bool")),
-        "sgt" => Some(("bvsgt", "Bool")),
-        "eq" => Some(("=", "Bool")),
-        "and" => Some(("bvand", "(_ BitVec 256)")),
-        "or" => Some(("bvor", "(_ BitVec 256)")),
-        "xor" => Some(("bvxor", "(_ BitVec 256)")),
+        "bvult" => true,
+        "bvugt" => true,
+        "bvslt" => true,
+        "bvsgt" => true,
+        _ => false
+    }
+}
+
+fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
+    match name {
+        "add" => Some("bvadd"),
+        "sub" => Some("bvsub"),
+        "mul" => Some("bvmul"),
+        "div" => Some("bvdiv"),
+        "sdiv" => Some("bvsdiv"),
+        "not" => Some("bvnot"),
+        "lt" => Some("bvult"),
+        "gt" => Some("bvugt"),
+        "slt" => Some("bvslt"),
+        "sgt" => Some("bvsgt"),
+        "eq" => Some("="),
+        "and" => Some("bvand"),
+        "or" => Some("bvor"),
+        "xor" => Some("bvxor"),
         _ => None,
     }
-    .map(|(smt_name, sort)| (format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name), sort.to_string()))
+    .map(|smt_name| match is_bool_function(smt_name) {
+        true => format!("(ite ({} {} {}) #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000)", smt_name, arguments[0].name, arguments[1].name),
+        false => format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name)
+    })
 
     // TODO ISZERO
 }
