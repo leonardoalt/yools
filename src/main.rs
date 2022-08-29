@@ -26,7 +26,7 @@ fn main() {
     println!("{}", query);
 
     let mut file = NamedTempFile::new().unwrap();
-    file.write(query.as_bytes()).unwrap();
+    file.write_all(query.as_bytes()).unwrap();
 
     let output = Command::new("cvc5")
         .args(["--lang", "smt2"])

@@ -424,7 +424,6 @@ mod tests {
         let if_st = yul::If {
             condition: yul::Expression::Literal(yul::Literal {
                 literal: "cond".to_string(),
-                yultype: None,
             }),
             body: yul::Block { statements: vec![] },
         };
