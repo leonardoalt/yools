@@ -32,7 +32,6 @@ pub struct Encoder {
 
 pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
     let mut encoder = Encoder::new(function_signatures);
-    //encoder.encode_block(ast);
     encoder.encode(ast);
     encoder.output
 }
@@ -101,19 +100,6 @@ impl Encoder {
         }
     }
 
-    fn encode_context_init(&mut self) {
-        let v = VariableDeclaration {
-            variables: vec![self.context.revert_flag.clone()],
-            value: Some(Expression::Literal(Literal::new("0"))),
-        };
-
-        self.encode_variable_declaration(&v);
-    }
-
-    fn encode_no_revert(&mut self) {
-        self.out(format!("(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))", self.to_smt_variable(&self.context.revert_flag).name));
-    }
-
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
             let var_id = if let IdentifierID::Declaration(id) = v.id {
@@ -134,38 +120,8 @@ impl Encoder {
         }
     }
 
-    fn allocate_new_ssa_index(&mut self, var_id: u64) -> u64 {
-        let ssa = *self
-            .ssa_highest
-            .entry(var_id)
-            .and_modify(|c| *c += 1)
-            .or_insert(0);
-        self.ssa_current.insert(var_id, ssa);
-        ssa
-    }
-
     fn encode_assignment(&mut self, assignment: &Assignment) {
         self.encode_assignment_inner(&assignment.variables, &assignment.value);
-    }
-
-    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, value: &Expression) {
-        for v in variables {
-            let var_id = match v.id {
-                IdentifierID::Declaration(id) => id,
-                IdentifierID::Reference(id) => id,
-                _ => panic!(),
-            };
-            self.allocate_new_ssa_index(var_id);
-        }
-        let values = self.encode_expression(value);
-        assert_eq!(values.len(), variables.len());
-        for (v, val) in variables.iter().zip(values.iter()) {
-            self.out(format!(
-                "(define-const {} (_ BitVec 256) {})",
-                self.to_smt_variable(v).name,
-                val.name
-            ));
-        }
     }
 
     fn encode_block(&mut self, block: &yul::Block) {
@@ -276,11 +232,6 @@ impl Encoder {
         var
     }
 
-    fn encode_literal_value(&self, literal: &Literal) -> String {
-        // TODO encode in hex
-        format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
-    }
-
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
         self.to_smt_variable(identifier)
     }
@@ -333,6 +284,88 @@ impl Encoder {
         }
     }
 
+}
+
+fn is_bool_function(name: &str) -> bool {
+    matches!(name, "bvult" | "bvugt" | "bvslt" | "bvsgt")
+}
+
+fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
+    match name {
+        "add" => Some("bvadd"),
+        "sub" => Some("bvsub"),
+        "mul" => Some("bvmul"),
+        "div" => Some("bvdiv"),
+        "sdiv" => Some("bvsdiv"),
+        "not" => Some("bvnot"),
+        "lt" => Some("bvult"),
+        "gt" => Some("bvugt"),
+        "slt" => Some("bvslt"),
+        "sgt" => Some("bvsgt"),
+        "eq" => Some("="),
+        "and" => Some("bvand"),
+        "or" => Some("bvor"),
+        "xor" => Some("bvxor"),
+        _ => None,
+    }
+    .map(|smt_name| match is_bool_function(smt_name) {
+        true => format!("(ite ({} {} {}) #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000)", smt_name, arguments[0].name, arguments[1].name),
+        false => format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name)
+    })
+
+    // TODO ISZERO
+}
+
+/// Helpers.
+impl Encoder {
+    fn encode_context_init(&mut self) {
+        let v = VariableDeclaration {
+            variables: vec![self.context.revert_flag.clone()],
+            value: Some(Expression::Literal(Literal::new("0"))),
+        };
+
+        self.encode_variable_declaration(&v);
+    }
+
+    fn encode_no_revert(&mut self) {
+        self.out(format!("(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))", self.to_smt_variable(&self.context.revert_flag).name));
+    }
+
+    fn allocate_new_ssa_index(&mut self, var_id: u64) -> u64 {
+        let ssa = *self
+            .ssa_highest
+            .entry(var_id)
+            .and_modify(|c| *c += 1)
+            .or_insert(0);
+        self.ssa_current.insert(var_id, ssa);
+        ssa
+    }
+
+    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, value: &Expression) {
+        for v in variables {
+            let var_id = match v.id {
+                IdentifierID::Declaration(id) => id,
+                IdentifierID::Reference(id) => id,
+                _ => panic!(),
+            };
+            self.allocate_new_ssa_index(var_id);
+        }
+        let values = self.encode_expression(value);
+        assert_eq!(values.len(), variables.len());
+        for (v, val) in variables.iter().zip(values.iter()) {
+            self.out(format!(
+                "(define-const {} (_ BitVec 256) {})",
+                self.to_smt_variable(v).name,
+                val.name
+            ));
+        }
+    }
+
+    fn encode_literal_value(&self, literal: &Literal) -> String {
+        // TODO encode in hex
+        format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
+    }
+
     fn new_temporary_variable(&mut self) -> SMTVariable {
         self.expression_counter += 1;
         SMTVariable {
@@ -367,36 +400,6 @@ impl Encoder {
     fn out(&mut self, x: String) {
         self.output = format!("{}{}\n", self.output, x)
     }
-}
-
-fn is_bool_function(name: &str) -> bool {
-    matches!(name, "bvult" | "bvugt" | "bvslt" | "bvsgt")
-}
-
-fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
-    match name {
-        "add" => Some("bvadd"),
-        "sub" => Some("bvsub"),
-        "mul" => Some("bvmul"),
-        "div" => Some("bvdiv"),
-        "sdiv" => Some("bvsdiv"),
-        "not" => Some("bvnot"),
-        "lt" => Some("bvult"),
-        "gt" => Some("bvugt"),
-        "slt" => Some("bvslt"),
-        "sgt" => Some("bvsgt"),
-        "eq" => Some("="),
-        "and" => Some("bvand"),
-        "or" => Some("bvor"),
-        "xor" => Some("bvxor"),
-        _ => None,
-    }
-    .map(|smt_name| match is_bool_function(smt_name) {
-        true => format!("(ite ({} {} {}) #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000)", smt_name, arguments[0].name, arguments[1].name),
-        false => format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name)
-    })
-
-    // TODO ISZERO
 }
 
 #[cfg(test)]
