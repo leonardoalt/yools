@@ -34,6 +34,13 @@ pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>)
     encoder.output
 }
 
+pub fn encode_function(function: &FunctionDefinition, function_signatures: HashMap<u64, FunctionSignature>) -> (String, FunctionVariables) {
+    let mut encoder = Encoder::new(function_signatures);
+    encoder.encode_context_init();
+    let variables = encoder.encode_function(function);
+    (encoder.output, variables)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SMTVariable {
     pub name: String,
