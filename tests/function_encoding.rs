@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
-use yools::encoder::FunctionVariables;
 use yools::encoder::encode_function;
+use yools::encoder::FunctionVariables;
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
 use yultsur::yul::*;
@@ -51,11 +51,19 @@ fn projection() {
     let (encoding, variables) = encode_first_function("function f(x, y) -> r { r := y }");
     tautology(
         &encoding,
-        &std::format!("(= {} {})", variables.returns[0].name, variables.parameters[1].name),
+        &std::format!(
+            "(= {} {})",
+            variables.returns[0].name,
+            variables.parameters[1].name
+        ),
     );
     satisfiable(
         &encoding,
-        &std::format!("(= {} {})", variables.returns[0].name, variables.parameters[0].name),
+        &std::format!(
+            "(= {} {})",
+            variables.returns[0].name,
+            variables.parameters[0].name
+        ),
     );
 }
 
@@ -96,5 +104,54 @@ fn branches() {
     tautology(
         &encoding,
         &std::format!("(= {} #x{:064X})", variables.returns[0].name, 1),
+    );
+}
+
+#[test]
+fn switch() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f(x) -> r, t {
+            r := 1
+            switch x
+                case 0 { r := 9 t := 7 }
+                case 1 { r := t }
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            "(=> (= {} #x{:064X}) (and (= {} #x{:064X}) (= {} #x{:064X})))",
+            variables.parameters[0].name,
+            0,
+            variables.returns[0].name,
+            9,
+            variables.returns[1].name,
+            7,
+        ),
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            "(=> (= {} #x{:064X}) (and (= {} #x{:064X}) (= {} #x{:064X})))",
+            variables.parameters[0].name,
+            1,
+            variables.returns[0].name,
+            0,
+            variables.returns[1].name,
+            0,
+        ),
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            "(=> (= {} #x{:064X}) (and (= {} #x{:064X}) (= {} #x{:064X})))",
+            variables.parameters[0].name,
+            2,
+            variables.returns[0].name,
+            1,
+            variables.returns[1].name,
+            0,
+        ),
     );
 }

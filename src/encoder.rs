@@ -22,7 +22,10 @@ impl Context {
 pub struct Encoder {
     function_signatures: HashMap<u64, FunctionSignature>,
     expression_counter: u64,
-    ssa_counter: HashMap<u64, u64>,
+    /// Current SSA index for each variable
+    ssa_current: HashMap<u64, u64>,
+    /// Highest SSA index (used for next assignment) for each variable
+    ssa_highest: HashMap<u64, u64>,
     output: String,
     context: Context,
 }
@@ -34,7 +37,10 @@ pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>)
     encoder.output
 }
 
-pub fn encode_function(function: &FunctionDefinition, function_signatures: HashMap<u64, FunctionSignature>) -> (String, FunctionVariables) {
+pub fn encode_function(
+    function: &FunctionDefinition,
+    function_signatures: HashMap<u64, FunctionSignature>,
+) -> (String, FunctionVariables) {
     let mut encoder = Encoder::new(function_signatures);
     encoder.encode_context_init();
     let variables = encoder.encode_function(function);
@@ -59,7 +65,8 @@ impl Encoder {
         Encoder {
             function_signatures,
             expression_counter: 0,
-            ssa_counter: HashMap::new(),
+            ssa_current: HashMap::new(),
+            ssa_highest: HashMap::new(),
             output: String::new(),
             context: Context::new(),
         }
@@ -114,10 +121,7 @@ impl Encoder {
             } else {
                 panic!();
             };
-            self.ssa_counter
-                .entry(var_id)
-                .and_modify(|c| *c += 1)
-                .or_insert(0);
+            self.allocate_new_ssa_index(var_id);
             if var.value == None {
                 self.out(format!(
                     "(declare-const {} (_ BitVec 256))",
@@ -128,6 +132,16 @@ impl Encoder {
         if let Some(value) = &var.value {
             self.encode_assignment_inner(&var.variables, value)
         }
+    }
+
+    fn allocate_new_ssa_index(&mut self, var_id: u64) -> u64 {
+        let ssa = *self
+            .ssa_highest
+            .entry(var_id)
+            .and_modify(|c| *c += 1)
+            .or_insert(0);
+        self.ssa_current.insert(var_id, ssa);
+        ssa
     }
 
     fn encode_assignment(&mut self, assignment: &Assignment) {
@@ -141,7 +155,7 @@ impl Encoder {
                 IdentifierID::Reference(id) => id,
                 _ => panic!(),
             };
-            *self.ssa_counter.get_mut(&var_id).unwrap() += 1;
+            self.allocate_new_ssa_index(var_id);
         }
         let values = self.encode_expression(value);
         assert_eq!(values.len(), variables.len());
@@ -162,7 +176,42 @@ impl Encoder {
     }
 
     fn encode_function_def(&mut self, _fun: &yul::FunctionDefinition) {}
-    fn encode_switch(&mut self, _fun: &yul::Switch) {}
+
+    fn encode_switch(&mut self, switch: &yul::Switch) {
+        let discriminator = self.encode_expression(&switch.expression);
+        assert!(discriminator.len() == 1);
+        let pre_switch_ssa = self.ssa_current.clone();
+        let mut post_switch_ssa = std::mem::take(&mut self.ssa_current);
+
+        for Case { literal, body } in &switch.cases {
+            // TODO default case is not yet implemented because
+            // the ITE expression is complicated.
+            assert!(*literal != None);
+            self.ssa_current = pre_switch_ssa.clone();
+
+            self.encode_block(body);
+
+            pre_switch_ssa.iter().for_each(|(key, value)| {
+                let branch_ssa = self.ssa_current[key];
+                if branch_ssa > *value {
+                    let new_ssa = self.allocate_new_ssa_index(*key);
+                    self.out(format!(
+                        "(define-const {} (_ BitVec 256) (ite (= {} {}) {} {}))",
+                        self.id_to_smt_variable(*key, new_ssa).name,
+                        discriminator[0].name,
+                        self.encode_literal_value(literal.as_ref().unwrap()),
+                        self.id_to_smt_variable(*key, branch_ssa).name,
+                        self.id_to_smt_variable(*key, post_switch_ssa[key]).name,
+                    ));
+
+                    post_switch_ssa.insert(*key, new_ssa);
+                }
+            });
+        }
+
+        self.ssa_current = post_switch_ssa;
+    }
+
     fn encode_for(&mut self, _fun: &yul::ForLoop) {}
 
     fn encode_statement(&mut self, st: &yul::Statement) {
@@ -186,14 +235,14 @@ impl Encoder {
     fn encode_if(&mut self, expr: &yul::If) {
         let cond = self.encode_expression(&expr.condition);
         assert!(cond.len() == 1);
-        let mut prev_ssa = self.ssa_counter.clone();
+        let mut prev_ssa = self.ssa_current.clone();
 
         self.encode_block(&expr.body);
 
         prev_ssa.iter_mut().for_each(|(key, value)| {
-            let branch_ssa = *self.ssa_counter.get(key).unwrap();
+            let branch_ssa = *self.ssa_current.get(key).unwrap();
             if branch_ssa > *value {
-                let new_ssa = branch_ssa + 1;
+                let new_ssa = self.allocate_new_ssa_index(*key);
                 self.out(format!(
                     "(define-const {} (_ BitVec 256) (ite (= {} #x0000000000000000000000000000000000000000000000000000000000000000) {} {}))",
                     self.id_to_smt_variable(*key, new_ssa).name,
@@ -206,7 +255,7 @@ impl Encoder {
             }
         });
 
-        self.ssa_counter = prev_ssa;
+        self.ssa_current = prev_ssa;
     }
 
     fn encode_expression(&mut self, expr: &Expression) -> Vec<SMTVariable> {
@@ -219,13 +268,17 @@ impl Encoder {
 
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
         let var = self.new_temporary_variable();
-        // TODO encode in hex
         self.out(format!(
-            "(define-const {} (_ BitVec 256) #x{:064X})",
+            "(define-const {} (_ BitVec 256) {})",
             &var.name,
-            &literal.literal.parse::<u128>().unwrap()
+            self.encode_literal_value(literal)
         ));
         var
+    }
+
+    fn encode_literal_value(&self, literal: &Literal) -> String {
+        // TODO encode in hex
+        format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
     }
 
     fn encode_identifier(&mut self, identifier: &Identifier) -> SMTVariable {
@@ -300,7 +353,7 @@ impl Encoder {
             _ => panic!(),
         };
         SMTVariable {
-            name: format!("v_{}_{}", var_id, self.ssa_counter[&var_id]),
+            name: format!("v_{}_{}", var_id, self.ssa_current[&var_id]),
         }
     }
 
