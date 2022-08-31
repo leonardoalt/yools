@@ -133,6 +133,44 @@ impl Encoder {
 
     fn encode_function_def(&mut self, _fun: &yul::FunctionDefinition) {}
 
+    fn encode_for(&mut self, _fun: &yul::ForLoop) {}
+
+    fn encode_statement(&mut self, st: &yul::Statement) {
+        match st {
+            yul::Statement::VariableDeclaration(var_decl) => {
+                self.encode_variable_declaration(var_decl)
+            }
+            yul::Statement::Assignment(assignment) => self.encode_assignment(assignment),
+            yul::Statement::Block(block) => self.encode_block(block),
+            yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
+            yul::Statement::If(if_st) => self.encode_if(if_st),
+            yul::Statement::Switch(switch) => self.encode_switch(switch),
+            yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
+            yul::Statement::Expression(expr) => {
+                assert!(self.encode_expression(expr).is_empty());
+            }
+            _ => {}
+        };
+    }
+
+    fn encode_if(&mut self, expr: &yul::If) {
+        let cond = self.encode_expression(&expr.condition);
+        assert!(cond.len() == 1);
+        let prev_ssa = self.ssa_current.clone();
+
+        self.encode_block(&expr.body);
+
+        let ssa_current = std::mem::take(&mut self.ssa_current);
+        self.ssa_current = self.join_branches(
+            format!(
+                "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
+                cond[0].name
+            ),
+            prev_ssa,
+            ssa_current,
+        );
+    }
+
     fn encode_switch(&mut self, switch: &yul::Switch) {
         let discriminator = self.encode_expression(&switch.expression);
         assert!(discriminator.len() == 1);
@@ -166,52 +204,6 @@ impl Encoder {
         }
 
         self.ssa_current = post_switch_ssa;
-    }
-
-    fn encode_for(&mut self, _fun: &yul::ForLoop) {}
-
-    fn encode_statement(&mut self, st: &yul::Statement) {
-        match st {
-            yul::Statement::VariableDeclaration(var_decl) => {
-                self.encode_variable_declaration(var_decl)
-            }
-            yul::Statement::Assignment(assignment) => self.encode_assignment(assignment),
-            yul::Statement::Block(block) => self.encode_block(block),
-            yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
-            yul::Statement::If(if_st) => self.encode_if(if_st),
-            yul::Statement::Switch(switch) => self.encode_switch(switch),
-            yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
-            yul::Statement::Expression(expr) => {
-                assert!(self.encode_expression(expr).is_empty());
-            }
-            _ => {}
-        };
-    }
-
-    fn encode_if(&mut self, expr: &yul::If) {
-        let cond = self.encode_expression(&expr.condition);
-        assert!(cond.len() == 1);
-        let mut prev_ssa = self.ssa_current.clone();
-
-        self.encode_block(&expr.body);
-
-        prev_ssa.iter_mut().for_each(|(key, value)| {
-            let branch_ssa = *self.ssa_current.get(key).unwrap();
-            if branch_ssa > *value {
-                let new_ssa = self.allocate_new_ssa_index(*key);
-                self.out(format!(
-                    "(define-const {} (_ BitVec 256) (ite (= {} #x0000000000000000000000000000000000000000000000000000000000000000) {} {}))",
-                    self.id_to_smt_variable(*key, new_ssa).name,
-                    cond[0].name,
-                    self.id_to_smt_variable(*key, *value).name,
-                    self.id_to_smt_variable(*key, branch_ssa).name,
-                ));
-
-                *value = new_ssa;
-            }
-        });
-
-        self.ssa_current = prev_ssa;
     }
 
     fn encode_expression(&mut self, expr: &Expression) -> Vec<SMTVariable> {
@@ -283,7 +275,6 @@ impl Encoder {
             ),
         }
     }
-
 }
 
 fn is_bool_function(name: &str) -> bool {
@@ -318,6 +309,35 @@ fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
 
 /// Helpers.
 impl Encoder {
+    /// Since Yul conditions are always "is this nonzero?",
+    /// the condition we take here is rather the negation of the original condition.
+    /// Therefore the first argument of the `ite` is the skipped branch and that's
+    /// the one we modify.
+    fn join_branches(
+        &mut self,
+        condition: String,
+        mut ssa_skipped: HashMap<u64, u64>,
+        ssa_branch: HashMap<u64, u64>,
+    ) -> HashMap<u64, u64> {
+        ssa_branch.iter().for_each(|(key, value)| {
+            let skipped_idx = ssa_skipped[key];
+            if skipped_idx != *value {
+                let new_ssa = self.allocate_new_ssa_index(*key);
+                self.out(format!(
+                    "(define-const {} (_ BitVec 256) (ite {} {} {}))",
+                    self.id_to_smt_variable(*key, new_ssa).name,
+                    condition,
+                    self.id_to_smt_variable(*key, skipped_idx).name,
+                    self.id_to_smt_variable(*key, *value).name,
+                ));
+
+                ssa_skipped.insert(*key, new_ssa);
+            }
+        });
+
+        ssa_skipped
+    }
+
     fn encode_context_init(&mut self) {
         let v = VariableDeclaration {
             variables: vec![self.context.revert_flag.clone()],
