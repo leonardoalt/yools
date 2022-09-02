@@ -83,17 +83,18 @@ impl Encoder {
     /// if called multiple times.
     /// @returns the names of the function parameters and return variables.
     pub fn encode_function(&mut self, function: &FunctionDefinition) -> FunctionVariables {
+        for param in &function.parameters {
+            self.introduce_variable(param);
+            self.out(format!(
+                "(declare-const {} (_ BitVec 256))",
+                self.to_smt_variable(param).name
+            ));
+        }
+        let parameters = self.to_smt_variables(&function.parameters);
         self.encode_variable_declaration(&VariableDeclaration {
-            variables: function.parameters.clone(),
+            variables: function.returns.clone(),
             value: None,
         });
-        let parameters = self.to_smt_variables(&function.parameters);
-        for r in &function.returns {
-            self.encode_variable_declaration(&VariableDeclaration {
-                variables: vec![r.clone()],
-                value: Some(Expression::Literal(Literal::new("0"))),
-            });
-        }
         self.encode_block(&function.body);
         let returns = self.to_smt_variables(&function.returns);
         FunctionVariables {
@@ -103,28 +104,24 @@ impl Encoder {
     }
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
-        for v in &var.variables {
-            let var_id = if let IdentifierID::Declaration(id) = v.id {
-                self.variable_names.insert(id, v.name.clone());
-                id
-            } else {
-                panic!();
-            };
-            self.allocate_new_ssa_index(var_id);
-            if var.value == None {
-                self.out(format!(
-                    "(declare-const {} (_ BitVec 256))",
-                    self.to_smt_variable(v).name
-                ));
+        let encoded_values = match &var.value {
+            Some(value) => self.encode_expression(value),
+            None => {
+                let zero = self.encode_literal(&Literal {
+                    literal: String::from("0"),
+                });
+                vec![zero; var.variables.len()]
             }
+        };
+        for v in &var.variables {
+            self.introduce_variable(v);
         }
-        if let Some(value) = &var.value {
-            self.encode_assignment_inner(&var.variables, value)
-        }
+        self.encode_assignment_inner(&var.variables, encoded_values)
     }
 
     fn encode_assignment(&mut self, assignment: &Assignment) {
-        self.encode_assignment_inner(&assignment.variables, &assignment.value);
+        let values = self.encode_expression(&assignment.value);
+        self.encode_assignment_inner(&assignment.variables, values);
     }
 
     fn encode_block(&mut self, block: &yul::Block) {
@@ -262,7 +259,8 @@ impl Encoder {
                         name: "revert_flag".to_string(),
                     }];
                     let e = Expression::Literal(Literal::new("1"));
-                    self.encode_assignment_inner(&v, &e);
+                    let values = self.encode_expression(&e);
+                    self.encode_assignment_inner(&v, values);
                 }
                 vars
             }
@@ -367,7 +365,9 @@ impl Encoder {
         ssa
     }
 
-    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, value: &Expression) {
+    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, values: Vec<SMTVariable>) {
+        assert_eq!(values.len(), variables.len());
+
         for v in variables {
             let var_id = match v.id {
                 IdentifierID::Declaration(id) => id,
@@ -376,8 +376,7 @@ impl Encoder {
             };
             self.allocate_new_ssa_index(var_id);
         }
-        let values = self.encode_expression(value);
-        assert_eq!(values.len(), variables.len());
+
         for (v, val) in variables.iter().zip(values.iter()) {
             self.out(format!(
                 "(define-const {} (_ BitVec 256) {})",
@@ -385,6 +384,15 @@ impl Encoder {
                 val.name
             ));
         }
+    }
+
+    fn introduce_variable(&mut self, variable: &Identifier) {
+        if let IdentifierID::Declaration(id) = variable.id {
+            self.variable_names.insert(id, variable.name.clone());
+            self.allocate_new_ssa_index(id);
+        } else {
+            panic!();
+        };
     }
 
     fn encode_literal_value(&self, literal: &Literal) -> String {
@@ -496,8 +504,9 @@ mod tests {
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
-                "(declare-const x_2_0 (_ BitVec 256))",
-                "(declare-const y_3_0 (_ BitVec 256))",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
+                "(define-const y_3_1 (_ BitVec 256) _2)",
                 "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")       
@@ -511,11 +520,31 @@ mod tests {
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
-                "(declare-const x_2_0 (_ BitVec 256))",
-                "(declare-const y_3_0 (_ BitVec 256))",
-                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const y_3_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
+                "(define-const y_3_2 (_ BitVec 256) _3)",
                 "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
+    fn re_assignment() {
+        assert_encoded(
+            "{ let x := 0 x := add(x, 1) }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
+                "(define-const _4 (_ BitVec 256) (bvadd x_2_1 _3))",
+                "(define-const x_2_2 (_ BitVec 256) _4)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))",
+                "",
             ]
             .join("\n")
         );
@@ -556,6 +585,29 @@ mod tests {
                 "(define-const x_2_2 (_ BitVec 256) _4)",
                 "(define-const x_2_3 (_ BitVec 256) (ite (= c_3_1 #x0000000000000000000000000000000000000000000000000000000000000000) x_2_1 x_2_2))",
                 "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
+    fn if_re_assignment() {
+        assert_encoded(
+            "{ let x := 0 let y := 3 if lt(x, y) { x := add(x, 1) } }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
+                "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
+                "(define-const y_3_1 (_ BitVec 256) _3)",
+                "(define-const _4 (_ BitVec 256) (ite (bvult x_2_1 y_3_1) #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000))",
+                "(define-const _5 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
+                "(define-const _6 (_ BitVec 256) (bvadd x_2_1 _5))",
+                "(define-const x_2_2 (_ BitVec 256) _6)",
+                "(define-const x_2_3 (_ BitVec 256) (ite (= _4 #x0000000000000000000000000000000000000000000000000000000000000000) x_2_1 x_2_2))",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))",
+                "",
             ]
             .join("\n")
         );

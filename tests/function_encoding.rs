@@ -91,6 +91,31 @@ fn arith_add() {
 }
 
 #[test]
+fn assignments() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f() -> a, b {
+            let x
+            let y := 2
+            x := add(x, y)
+            y := add(y, 11)
+            a := x
+            b := y
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            "(and (= {} #x{:064X}) (= {} #x{:064X}))",
+            variables.returns[0].name,
+            2,
+            variables.returns[1].name,
+            13
+        ),
+    );
+}
+
+#[test]
 fn branches() {
     let (encoding, variables) = encode_first_function(
         r#"
