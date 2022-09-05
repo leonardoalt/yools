@@ -1,3 +1,4 @@
+use crate::evm_builtins::encode_builtin_call;
 use std::collections::HashMap;
 use yultsur::dialect::{Dialect, EVMDialect};
 use yultsur::resolver::FunctionSignature;
@@ -29,6 +30,11 @@ pub struct Encoder {
     variable_names: HashMap<u64, String>,
     output: String,
     context: Context,
+}
+
+pub trait EVMContext {
+    fn set_reverted(&mut self);
+    fn set_stopped(&mut self);
 }
 
 pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
@@ -232,37 +238,25 @@ impl Encoder {
         let arguments = call
             .arguments
             .iter()
+            .rev()
             .map(|arg| {
                 let mut value = self.encode_expression(arg);
                 assert_eq!(value.len(), 1);
                 value.pop().unwrap()
             })
+            .rev()
             .collect::<Vec<_>>();
 
         match call.function.id {
             IdentifierID::BuiltinReference => {
-                let returns = EVMDialect::builtin(&call.function.name).unwrap().returns;
-                let vars: Vec<SMTVariable> = (0..returns)
+                let builtin = &EVMDialect::builtin(&call.function.name).unwrap();
+                let return_vars: Vec<SMTVariable> = (0..builtin.returns)
                     .map(|_i| self.new_temporary_variable())
                     .collect();
-                if let Some(builtin_call) = encode_builtin(&call.function.name, &arguments) {
-                    assert_eq!(returns, 1);
-                    self.out(format!(
-                        "(define-const {} (_ BitVec 256) {})",
-                        &vars.first().unwrap().name,
-                        builtin_call
-                    ));
-                }
-                if call.function.name.as_str() == "revert" {
-                    let v = vec![Identifier {
-                        id: IdentifierID::Reference(666),
-                        name: "revert_flag".to_string(),
-                    }];
-                    let e = Expression::Literal(Literal::new("1"));
-                    let values = self.encode_expression(&e);
-                    self.encode_assignment_inner(&v, values);
-                }
-                vars
+
+                let result = encode_builtin_call(builtin, arguments, &return_vars, self);
+                self.out(result);
+                return_vars
             }
             IdentifierID::Reference(id) => {
                 let returns = self.function_signatures[&id].returns;
@@ -278,34 +272,18 @@ impl Encoder {
     }
 }
 
-fn is_bool_function(name: &str) -> bool {
-    matches!(name, "bvult" | "bvugt" | "bvslt" | "bvsgt")
-}
-
-fn encode_builtin(name: &str, arguments: &[SMTVariable]) -> Option<String> {
-    match name {
-        "add" => Some("bvadd"),
-        "sub" => Some("bvsub"),
-        "mul" => Some("bvmul"),
-        "div" => Some("bvdiv"),
-        "sdiv" => Some("bvsdiv"),
-        "not" => Some("bvnot"),
-        "lt" => Some("bvult"),
-        "gt" => Some("bvugt"),
-        "slt" => Some("bvslt"),
-        "sgt" => Some("bvsgt"),
-        "eq" => Some("="),
-        "and" => Some("bvand"),
-        "or" => Some("bvor"),
-        "xor" => Some("bvxor"),
-        _ => None,
+impl EVMContext for Encoder {
+    fn set_reverted(&mut self) {
+        let v = vec![Identifier {
+            id: IdentifierID::Reference(666),
+            name: "revert_flag".to_string(),
+        }];
+        let value = self.encode_literal(&Literal::new("1"));
+        self.encode_assignment_inner(&v, vec![value]);
     }
-    .map(|smt_name| match is_bool_function(smt_name) {
-        true => format!("(ite ({} {} {}) #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000)", smt_name, arguments[0].name, arguments[1].name),
-        false => format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name)
-    })
-
-    // TODO ISZERO
+    fn set_stopped(&mut self) {
+        // TODO
+    }
 }
 
 /// Helpers.
