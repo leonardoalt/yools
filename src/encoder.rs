@@ -26,6 +26,7 @@ pub struct Encoder {
     ssa_current: HashMap<u64, u64>,
     /// Highest SSA index (used for next assignment) for each variable
     ssa_highest: HashMap<u64, u64>,
+    variable_names: HashMap<u64, String>,
     output: String,
     context: Context,
 }
@@ -66,6 +67,7 @@ impl Encoder {
             expression_counter: 0,
             ssa_current: HashMap::new(),
             ssa_highest: HashMap::new(),
+            variable_names: HashMap::new(),
             output: String::new(),
             context: Context::new(),
         }
@@ -103,6 +105,7 @@ impl Encoder {
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
         for v in &var.variables {
             let var_id = if let IdentifierID::Declaration(id) = v.id {
+                self.variable_names.insert(id, v.name.clone());
                 id
             } else {
                 panic!();
@@ -348,7 +351,10 @@ impl Encoder {
     }
 
     fn encode_no_revert(&mut self) {
-        self.out(format!("(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))", self.to_smt_variable(&self.context.revert_flag).name));
+        self.out(format!(
+            "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
+            self.to_smt_variable(&self.context.revert_flag).name
+        ));
     }
 
     fn allocate_new_ssa_index(&mut self, var_id: u64) -> u64 {
@@ -395,7 +401,7 @@ impl Encoder {
 
     fn id_to_smt_variable(&self, id: u64, ssa_idx: u64) -> SMTVariable {
         SMTVariable {
-            name: format!("v_{}_{}", id, ssa_idx),
+            name: format!("{}_{}_{}", self.variable_names[&id], id, ssa_idx),
         }
     }
 
@@ -405,9 +411,7 @@ impl Encoder {
             IdentifierID::Reference(id) => id,
             _ => panic!(),
         };
-        SMTVariable {
-            name: format!("v_{}_{}", var_id, self.ssa_current[&var_id]),
-        }
+        self.id_to_smt_variable(var_id, self.ssa_current[&var_id])
     }
 
     fn to_smt_variables(&self, identifiers: &[Identifier]) -> Vec<SMTVariable> {
@@ -463,8 +467,8 @@ mod tests {
             "{}",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -476,10 +480,10 @@ mod tests {
             "{ let x := 2 }",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
-                "(define-const v_2_1 (_ BitVec 256) _2)",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -491,10 +495,10 @@ mod tests {
             "{ let x, y }",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
-                "(declare-const v_2_0 (_ BitVec 256))",
-                "(declare-const v_3_0 (_ BitVec 256))",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(declare-const x_2_0 (_ BitVec 256))",
+                "(declare-const y_3_0 (_ BitVec 256))",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")       
          );
@@ -506,12 +510,12 @@ mod tests {
             "{ let x, y y := 9}",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
-                "(declare-const v_2_0 (_ BitVec 256))",
-                "(declare-const v_3_0 (_ BitVec 256))",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(declare-const x_2_0 (_ BitVec 256))",
+                "(declare-const y_3_0 (_ BitVec 256))",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
-                "(define-const v_3_1 (_ BitVec 256) _2)",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const y_3_1 (_ BitVec 256) _2)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -523,15 +527,15 @@ mod tests {
             "{ let y := 1 let x := add(add(2, 3), y) }",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
-                "(define-const v_2_1 (_ BitVec 256) _2)",
+                "(define-const y_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
                 "(define-const _4 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
                 "(define-const _5 (_ BitVec 256) (bvadd _3 _4))",
-                "(define-const _6 (_ BitVec 256) (bvadd _5 v_2_1))",
-                "(define-const v_3_1 (_ BitVec 256) _6)",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const _6 (_ BitVec 256) (bvadd _5 y_2_1))",
+                "(define-const x_3_1 (_ BitVec 256) _6)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -543,15 +547,15 @@ mod tests {
             "{ let x := 9 let c := 1 if c { x := 666 } }",
             &vec![
                 "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const v_666_1 (_ BitVec 256) _1)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
-                "(define-const v_2_1 (_ BitVec 256) _2)",
+                "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
-                "(define-const v_3_1 (_ BitVec 256) _3)",
+                "(define-const c_3_1 (_ BitVec 256) _3)",
                 "(define-const _4 (_ BitVec 256) #x000000000000000000000000000000000000000000000000000000000000029A)",
-                "(define-const v_2_2 (_ BitVec 256) _4)",
-                "(define-const v_2_3 (_ BitVec 256) (ite (= v_3_1 #x0000000000000000000000000000000000000000000000000000000000000000) v_2_1 v_2_2))",
-                "(assert (not (= v_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+                "(define-const x_2_2 (_ BitVec 256) _4)",
+                "(define-const x_2_3 (_ BitVec 256) (ite (= c_3_1 #x0000000000000000000000000000000000000000000000000000000000000000) x_2_1 x_2_2))",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
             ]
             .join("\n")
         );
@@ -563,27 +567,42 @@ mod tests {
             encode_function_from_source("{ function f(a, b) -> c { c := b } }");
         assert_eq!(output,
                 vec![
-                    "(declare-const v_3_0 (_ BitVec 256))",
-                    "(declare-const v_4_0 (_ BitVec 256))",
+                    "(declare-const a_3_0 (_ BitVec 256))",
+                    "(declare-const b_4_0 (_ BitVec 256))",
                     "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                    "(define-const v_5_1 (_ BitVec 256) _1)",
-                    "(define-const v_5_2 (_ BitVec 256) v_4_0)\n"
+                    "(define-const c_5_1 (_ BitVec 256) _1)",
+                    "(define-const c_5_2 (_ BitVec 256) b_4_0)\n"
                 ].join("\n"));
         assert_eq!(
             variables,
             FunctionVariables {
                 parameters: vec![
                     SMTVariable {
-                        name: String::from("v_3_0")
+                        name: String::from("a_3_0")
                     },
                     SMTVariable {
-                        name: String::from("v_4_0")
+                        name: String::from("b_4_0")
                     }
                 ],
                 returns: vec![SMTVariable {
-                    name: String::from("v_5_2")
+                    name: String::from("c_5_2")
                 }],
             }
+        );
+    }
+
+    #[test]
+    fn weird_variable_name() {
+        assert_encoded(
+            "{ let x1 := 0 }",
+            &vec![
+                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+                "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+                "(define-const x1_2_1 (_ BitVec 256) _2)",
+                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+            ]
+            .join("\n")
         );
     }
 }
