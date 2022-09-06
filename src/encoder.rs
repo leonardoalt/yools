@@ -139,8 +139,6 @@ impl Encoder {
 
     fn encode_function_def(&mut self, _fun: &yul::FunctionDefinition) {}
 
-    fn encode_for(&mut self, _fun: &yul::ForLoop) {}
-
     fn encode_statement(&mut self, st: &yul::Statement) {
         match st {
             yul::Statement::VariableDeclaration(var_decl) => {
@@ -175,6 +173,33 @@ impl Encoder {
             prev_ssa,
             ssa_current,
         );
+    }
+
+    fn encode_for(&mut self, for_loop: &yul::ForLoop) {
+        // TODO this does not support break/continue/leave
+
+        let its = 10;
+
+        self.encode_block(&for_loop.pre);
+
+        for _i in 0..its {
+            let cond = self.encode_expression(&for_loop.condition);
+            assert!(cond.len() == 1);
+            let prev_ssa = self.ssa_current.clone();
+
+            self.encode_block(&for_loop.body);
+            self.encode_block(&for_loop.post);
+
+            let ssa_current = std::mem::take(&mut self.ssa_current);
+            self.ssa_current = self.join_branches(
+                format!(
+                    "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
+                    cond[0].name
+                ),
+                prev_ssa,
+                ssa_current,
+            );
+        }
     }
 
     fn encode_switch(&mut self, switch: &yul::Switch) {
