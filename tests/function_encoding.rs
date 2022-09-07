@@ -180,3 +180,99 @@ fn switch() {
         ),
     );
 }
+
+#[test]
+fn for_loop() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f(x, i, p) -> r {
+            let y := 3
+            for {} lt(x, y) { x := add(x, i) } { x := add(x, p) }
+            r := x
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            r#"(=>
+                (and (= {} #x{:064X}) (= {} #x{:064X}) (= {} #x{:064X}))
+                (= {} #x{:064X})
+            )"#,
+            variables.parameters[0].name,
+            0,
+            variables.parameters[1].name,
+            1,
+            variables.parameters[2].name,
+            0,
+            variables.returns[0].name,
+            3
+        ),
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            r#"(=>
+                (and (= {} #x{:064X}) (= {} #x{:064X}) (= {} #x{:064X}))
+                (= {} #x{:064X})
+            )"#,
+            variables.parameters[0].name,
+            0,
+            variables.parameters[1].name,
+            2,
+            variables.parameters[2].name,
+            0,
+            variables.returns[0].name,
+            4
+        ),
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            r#"(=>
+                (and (= {} #x{:064X}) (= {} #x{:064X}) (= {} #x{:064X}))
+                (= {} #x{:064X})
+            )"#,
+            variables.parameters[0].name,
+            0,
+            variables.parameters[1].name,
+            0,
+            variables.parameters[2].name,
+            1,
+            variables.returns[0].name,
+            3
+        ),
+    );
+}
+
+#[test]
+fn for_loop_nested() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f(x, y) -> r, t {
+            for {} lt(x, 3) {
+                for {} lt(y, 3) {
+                    y := add(y, 1)
+                } {}
+            } { x := add(x, 1) }
+            r := x
+            t := y
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!(
+            r#"(=>
+                (and (= {} #x{:064X}) (= {} #x{:064X}))
+                (and (= {} #x{:064X}) (= {} #x{:064X}))
+            )"#,
+            variables.parameters[0].name,
+            0,
+            variables.parameters[1].name,
+            0,
+            variables.returns[0].name,
+            3,
+            variables.returns[1].name,
+            3,
+        ),
+    );
+}
