@@ -7,17 +7,20 @@ pub fn encode_builtin_call(
     return_vars: &[SMTVariable],
     context: &mut impl EVMContext,
 ) -> String {
-    let direct = |smt_name: &str| {
-        let smt_encoding = format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name);
+    let single_return = |value: String| {
         assert_eq!(return_vars.len(), 1);
         format!(
             "(define-const {} (_ BitVec 256) {})",
             &return_vars.first().unwrap().name,
-            match is_bool_function(smt_name) {
-                true => wrap_boolean(smt_encoding),
-                false => smt_encoding,
-            }
+            value
         )
+    };
+    let direct = |smt_name: &str| {
+        let smt_encoding = format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name);
+        single_return(match is_bool_function(smt_name) {
+            true => wrap_boolean(smt_encoding),
+            false => smt_encoding,
+        })
     };
 
     match builtin.name.as_str() {
@@ -38,10 +41,10 @@ pub fn encode_builtin_call(
         "slt" => direct("bvslt"),
         "sgt" => direct("bvsgt"),
         "eq" => direct("="),
-        "iszero" => wrap_boolean(format!(
+        "iszero" => single_return(wrap_boolean(format!(
             "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
             arguments[0].name
-        )),
+        ))),
         "and" => direct("bvand"),
         "or" => direct("bvor"),
         "xor" => direct("bvxor"),
