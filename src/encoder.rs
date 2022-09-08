@@ -43,6 +43,16 @@ pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>)
     encoder.output
 }
 
+pub fn encode_revert_unreachable(
+    ast: &Block,
+    function_signatures: HashMap<u64, FunctionSignature>,
+) -> String {
+    let mut encoder = Encoder::new(function_signatures);
+    encoder.encode(ast);
+    encoder.encode_revert_unreachable();
+    encoder.output
+}
+
 pub fn encode_function(
     function: &FunctionDefinition,
     function_signatures: HashMap<u64, FunctionSignature>,
@@ -82,7 +92,6 @@ impl Encoder {
     pub fn encode(&mut self, block: &Block) {
         self.encode_context_init();
         self.encode_block(block);
-        self.encode_no_revert();
     }
 
     /// Encodes the given function, potentially re-creating copies of all local variables
@@ -359,7 +368,7 @@ impl Encoder {
         self.encode_variable_declaration(&v);
     }
 
-    fn encode_no_revert(&mut self) {
+    fn encode_revert_unreachable(&mut self) {
         self.out(format!(
             "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
             self.to_smt_variable(&self.context.revert_flag).name
@@ -460,7 +469,7 @@ mod tests {
     fn encode_from_source(input: &str) -> String {
         let mut ast = yultsur::yul_parser::parse_block(input);
         let signatures = yultsur::resolver::resolve::<EVMDialect>(&mut ast);
-        encode(&ast, signatures)
+        encode_revert_unreachable(&ast, signatures)
     }
 
     fn encode_function_from_source(input: &str) -> (String, FunctionVariables) {
