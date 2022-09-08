@@ -6,6 +6,8 @@ use std::process::Command;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
+use yools::evm_builtins::EVMInstructions;
+
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
 use yultsur::yul_parser;
@@ -20,7 +22,7 @@ fn main() {
     let mut ast = yul_parser::parse_block(&content);
     let signatures = resolve::<EVMDialect>(&mut ast);
 
-    let query = yools::encoder::encode(&ast, signatures);
+    let query = yools::encoder::encode::<EVMInstructions>(&ast, signatures);
     let query = format!("{}\n{}", query, "(check-sat)");
 
     println!("{}", query);

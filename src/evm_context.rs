@@ -59,7 +59,7 @@ fn assign_variable_if_executing_regularly(
     )
 }
 
-fn executing_regularly(ssa: &mut SSATracker) -> String {
+pub fn executing_regularly(ssa: &mut SSATracker) -> String {
     format!(
         "(and (= {} #x0000000000000000000000000000000000000000000000000000000000000000) (= {} #x0000000000000000000000000000000000000000000000000000000000000000))",
         ssa.to_smt_variable(&revert_flag()).name,
