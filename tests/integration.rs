@@ -79,5 +79,9 @@ fn test_file_syntax(test_file: &str, update: bool) {
 }
 
 fn unsat(query: &String) {
-    assert!(!solver::query_smt(query), "Should be UNSAT.");
+    assert!(
+        !solver::query_smt(query),
+        "Should be UNSAT. Query:\n{}",
+        query
+    );
 }
