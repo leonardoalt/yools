@@ -407,8 +407,16 @@ impl Encoder {
     }
 
     fn encode_literal_value(&self, literal: &Literal) -> String {
-        // TODO encode in hex
-        format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
+        if literal.literal.starts_with("0x") {
+            format!(
+                "#x{}{}",
+                "0".repeat(2 + 64 - literal.literal.len()),
+                &literal.literal[2..]
+            )
+        } else {
+            // TODO support larger decimal constants.
+            format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
+        }
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {

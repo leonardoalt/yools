@@ -91,6 +91,21 @@ fn arith_add() {
 }
 
 #[test]
+fn large_hex_constants_wrapping() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f() -> a {
+            let x := 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            a := add(x, 2)
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!("(= {} #x{:064X})", variables.returns[0].name, 1),
+    );
+}
+
+#[test]
 fn assignments() {
     let (encoding, variables) = encode_first_function(
         r#"
