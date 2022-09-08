@@ -30,7 +30,7 @@ pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
 }
 
 fn revert_flag() -> Identifier {
-    identifier("_revert", 0)
+    identifier("_revert", 1024)
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
