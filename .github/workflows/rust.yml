@@ -2,7 +2,6 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -16,6 +15,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: ⚡ Cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Install Dependencies
       run: sudo apt-get install -y cvc4
     - name: Build
