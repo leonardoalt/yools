@@ -299,15 +299,23 @@ impl Encoder {
 
 impl EVMContext for Encoder {
     fn set_reverted(&mut self) {
-        let v = vec![Identifier {
-            id: IdentifierID::Reference(666),
-            name: "revert_flag".to_string(),
-        }];
+        let v = vec![identifier_to_reference(&self.context.revert_flag)];
         let value = self.encode_literal(&Literal::new("1"));
         self.encode_assignment_inner(&v, vec![value]);
     }
     fn set_stopped(&mut self) {
         // TODO
+    }
+}
+
+fn identifier_to_reference(identifier: &Identifier) -> Identifier {
+    if let IdentifierID::Declaration(id) = identifier.id {
+        Identifier {
+            id: IdentifierID::Reference(id),
+            name: identifier.name.clone(),
+        }
+    } else {
+        panic!()
     }
 }
 
