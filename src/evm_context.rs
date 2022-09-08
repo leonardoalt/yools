@@ -30,14 +30,16 @@ pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
 }
 
 fn revert_flag() -> Identifier {
-    identifier("revert", 666)
+    identifier("_revert", 0)
 }
+
 fn identifier(name: &str, id: u64) -> Identifier {
     Identifier {
         id: IdentifierID::Reference(id),
         name: name.to_string(),
     }
 }
+
 fn as_declaration(identifier: Identifier) -> Identifier {
     if let IdentifierID::Reference(id) = identifier.id {
         Identifier {
