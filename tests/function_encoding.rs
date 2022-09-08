@@ -1,8 +1,6 @@
-use std::io::Write;
-use std::process::Command;
-use tempfile::NamedTempFile;
 use yools::encoder::encode_function;
 use yools::encoder::FunctionVariables;
+use yools::solver;
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
 use yultsur::yul::*;
@@ -18,32 +16,19 @@ fn encode_first_function(input: &str) -> (String, FunctionVariables) {
     }
 }
 
-fn query_smt(query: &String) -> bool {
-    let query = format!("{}\n{}", query, "(check-sat)");
-
-    let mut file = NamedTempFile::new().unwrap();
-    file.write(query.as_bytes()).unwrap();
-
-    let output = Command::new("cvc4")
-        .args(["--lang", "smt2"])
-        .args([file.path()])
-        .output()
-        .expect("failed to run query");
-
-    match String::from_utf8(output.stdout).unwrap().as_str() {
-        "sat\n" => true,
-        "unsat\n" => false,
-        _ => panic!("Invalid output from smt solver. Query: {}", &query),
-    }
-}
-
 fn tautology(q: &str, condition: &String) {
     let query = &std::format!("{q}\n(assert (not {condition}))\n");
-    assert!(!query_smt(&query), "Tautology failed. Query: {query}");
+    assert!(
+        !solver::query_smt(&query),
+        "Tautology failed. Query: {query}"
+    );
 }
 fn satisfiable(q: &str, condition: &String) {
     let query = &std::format!("{q}\n(assert {condition})\n");
-    assert!(query_smt(&query), "Satisfiability failed. Query: {query}");
+    assert!(
+        solver::query_smt(&query),
+        "Satisfiability failed. Query: {query}"
+    );
 }
 
 #[test]
