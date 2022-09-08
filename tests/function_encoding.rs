@@ -24,16 +24,23 @@ fn query_smt(query: &String) -> bool {
     let mut file = NamedTempFile::new().unwrap();
     file.write(query.as_bytes()).unwrap();
 
-    let output = Command::new("cvc4")
-        .args(["--lang", "smt2"])
-        .args([file.path()])
-        .output()
-        .expect("failed to run query");
+    let output = String::from_utf8(
+        Command::new("cvc4")
+            .args(["--lang", "smt2"])
+            .args([file.path()])
+            .output()
+            .expect("failed to run query")
+            .stdout,
+    )
+    .unwrap();
 
-    match String::from_utf8(output.stdout).unwrap().as_str() {
+    match output.as_str() {
         "sat\n" => true,
         "unsat\n" => false,
-        _ => panic!("Invalid output from smt solver. Query: {}", &query),
+        _ => panic!(
+            "Invalid output from smt solver. Query: {}\nOutput: {}",
+            &query, output
+        ),
     }
 }
 
@@ -289,5 +296,20 @@ fn for_loop_nested() {
             variables.returns[1].name,
             3,
         ),
+    );
+}
+
+#[test]
+fn address() {
+    let (encoding, variables) = encode_first_function(
+        r#"
+        function f() -> t {
+            let x := address()
+            t := lt(x, 0x10000000000000000000000000000000000000000)
+        }"#,
+    );
+    tautology(
+        &encoding,
+        &std::format!("(= {} #x{:064X})", variables.returns[0].name, 1,),
     );
 }

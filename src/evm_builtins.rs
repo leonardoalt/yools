@@ -7,17 +7,20 @@ pub fn encode_builtin_call(
     return_vars: &[SMTVariable],
     context: &mut impl EVMContext,
 ) -> String {
-    let direct = |smt_name: &str| {
-        let smt_encoding = format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name);
+    let single_return = |value: String| {
         assert_eq!(return_vars.len(), 1);
         format!(
             "(define-const {} (_ BitVec 256) {})",
             &return_vars.first().unwrap().name,
-            match is_bool_function(smt_name) {
-                true => wrap_boolean(smt_encoding),
-                false => smt_encoding,
-            }
+            value
         )
+    };
+    let direct = |smt_name: &str| {
+        let smt_encoding = format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name);
+        single_return(match is_bool_function(smt_name) {
+            true => wrap_boolean(smt_encoding),
+            false => smt_encoding,
+        })
     };
 
     match builtin.name.as_str() {
@@ -53,10 +56,10 @@ pub fn encode_builtin_call(
         "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "keccak256" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "address" => panic!("Builtin {} not implemented", builtin.name), // TODO
+        "address" => single_return(context.address()),
         "balance" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "origin" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "caller" => panic!("Builtin {} not implemented", builtin.name), // TODO
+        "origin" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+        "caller" => panic!("Builtin {} not implemented", builtin.name),  // TODO
         "callvalue" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "calldataload" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "calldatasize" => panic!("Builtin {} not implemented", builtin.name), // TODO
@@ -72,29 +75,29 @@ pub fn encode_builtin_call(
         "blockhash" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "coinbase" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "timestamp" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "number" => panic!("Builtin {} not implemented", builtin.name), // TODO
+        "number" => panic!("Builtin {} not implemented", builtin.name),  // TODO
         "difficulty" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "gaslimit" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "chainid" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "selfbalance" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "basefee" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "pop" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-        "mload" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-        "mstore" => panic!("Builtin {} not implemented", builtin.name), // TODO
+        "pop" => panic!("Builtin {} not implemented", builtin.name),     // TODO
+        "mload" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+        "mstore" => panic!("Builtin {} not implemented", builtin.name),  // TODO
         "mstore8" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "sload" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-        "sstore" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "msize" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-        "gas" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-        "log0" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-        "log1" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-        "log2" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-        "log3" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-        "log4" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-        "create" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "call" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+        "sload" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+        "sstore" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+        "msize" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+        "gas" => panic!("Builtin {} not implemented", builtin.name),     // TODO
+        "log0" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+        "log1" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+        "log2" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+        "log3" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+        "log4" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+        "create" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+        "call" => panic!("Builtin {} not implemented", builtin.name),    // TODO
         "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "return" => panic!("Builtin {} not implemented", builtin.name), // TODO
+        "return" => panic!("Builtin {} not implemented", builtin.name),  // TODO
         "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "create2" => panic!("Builtin {} not implemented", builtin.name), // TODO

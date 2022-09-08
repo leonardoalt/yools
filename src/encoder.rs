@@ -7,6 +7,7 @@ use yultsur::yul::*;
 
 struct Context {
     revert_flag: Identifier,
+    address: Identifier,
 }
 
 impl Context {
@@ -15,6 +16,10 @@ impl Context {
             revert_flag: Identifier {
                 id: IdentifierID::Declaration(666),
                 name: "revert_flag".to_string(),
+            },
+            address: Identifier {
+                id: IdentifierID::Declaration(667),
+                name: "address".to_string(),
             },
         }
     }
@@ -35,6 +40,7 @@ pub struct Encoder {
 pub trait EVMContext {
     fn set_reverted(&mut self);
     fn set_stopped(&mut self);
+    fn address(&self) -> String;
 }
 
 pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
@@ -306,6 +312,10 @@ impl EVMContext for Encoder {
     fn set_stopped(&mut self) {
         // TODO
     }
+    fn address(&self) -> String {
+        self.to_smt_variable(&identifier_to_reference(&self.context.address))
+            .name
+    }
 }
 
 fn identifier_to_reference(identifier: &Identifier) -> Identifier {
@@ -357,6 +367,15 @@ impl Encoder {
         };
 
         self.encode_variable_declaration(&v);
+
+        let addr = &self.context.address.clone();
+        self.introduce_variable(addr);
+        let address = self.to_smt_variable(&self.context.address).name;
+        self.out(format!("(declare-const {address} (_ BitVec 256))"));
+        // Assert that the higher-order bits of address are zero.
+        self.out(format!(
+            "(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))",
+        ));
     }
 
     fn encode_no_revert(&mut self) {
@@ -476,11 +495,18 @@ mod tests {
     }
 
     fn assert_encoded(input: &str, expectation: &String) {
+        let prelude = vec![
+            "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
+            "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
+            "(declare-const address_667_0 (_ BitVec 256))",
+            "(assert (= ((_ extract 255 160) address_667_0) #x000000000000000000000000))\n",
+        ].join("\n");
         let encoded = encode_from_source(input);
+        println!("||{}||{}||", encoded, format!("{prelude}{}", *expectation));
         assert!(
-            encoded == *expectation,
-            "Invaling encoding. Expected:\n{:?}\nTo fix, update to:\n{}\n",
-            expectation,
+            encoded == format!("{prelude}{}", *expectation),
+            "Invaling encoding. Expected:\n{}\nTo fix, update to (minus prelude):\n{}\n",
+            format!("{prelude}{}", *expectation),
             encoded
                 .split("\n")
                 .map(|l| format!("\"{l}\",\n"))
@@ -490,15 +516,10 @@ mod tests {
 
     #[test]
     fn empty() {
-        assert_encoded(
+        assert_encoded("{}", &format!(
             "{}",
-            &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
-                "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
-            ]
-            .join("\n")
-        );
+            "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
+        ));
     }
 
     #[test]
@@ -506,8 +527,6 @@ mod tests {
         assert_encoded(
             "{ let x := 2 }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
@@ -521,8 +540,6 @@ mod tests {
         assert_encoded(
             "{ let x, y }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const y_3_1 (_ BitVec 256) _2)",
@@ -537,8 +554,6 @@ mod tests {
         assert_encoded(
             "{ let x, y y := 9}",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const y_3_1 (_ BitVec 256) _2)",
@@ -555,8 +570,6 @@ mod tests {
         assert_encoded(
             "{ let x := 0 x := add(x, 1) }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
@@ -574,8 +587,6 @@ mod tests {
         assert_encoded(
             "{ let y := 1 let x := add(add(2, 3), y) }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
                 "(define-const y_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000002)",
@@ -594,8 +605,6 @@ mod tests {
         assert_encoded(
             "{ let x := 9 let c := 1 if c { x := 666 } }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000009)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
@@ -614,8 +623,6 @@ mod tests {
         assert_encoded(
             "{ let x := 0 let y := 3 if lt(x, y) { x := add(x, 1) } }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const x_2_1 (_ BitVec 256) _2)",
                 "(define-const _3 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000003)",
@@ -667,8 +674,6 @@ mod tests {
         assert_encoded(
             "{ let x1 := 0 }",
             &vec![
-                "(define-const _1 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
-                "(define-const revert_flag_666_1 (_ BitVec 256) _1)",
                 "(define-const _2 (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)",
                 "(define-const x1_2_1 (_ BitVec 256) _2)",
                 "(assert (not (= revert_flag_666_1 #x0000000000000000000000000000000000000000000000000000000000000000)))\n",
