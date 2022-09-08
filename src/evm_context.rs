@@ -1,15 +1,30 @@
+use std::collections::HashMap;
+
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
 
 pub fn init(ssa: &mut SSATracker) -> String {
-    let output = [revert_flag(), stop_flag(), address_var()].into_iter().map(|identifier| {
+    let mut output = [revert_flag(), stop_flag()].into_iter().map(|identifier| {
         let var = ssa.introduce_variable(&as_declaration(identifier));
         format!(
             "(define-const {} (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)\n",
             var.name
         )
     }).collect::<Vec<_>>().join("");
-    let address = ssa.to_smt_variable(&address_var()).name;
+    let mut static_var_list = static_vars().into_iter().collect::<Vec<_>>();
+    static_var_list.sort_by_key(|(name, _)| name.clone());
+    output.push_str(
+        static_var_list
+            .into_iter()
+            .map(|(_name, identifier)| {
+                let var = ssa.introduce_variable(&as_declaration(identifier));
+                format!("(declare-const {} (_ BitVec 256))\n", var.name)
+            })
+            .collect::<Vec<_>>()
+            .join("")
+            .as_str(),
+    );
+    let address = ssa.to_smt_variable(&static_vars()["address"]).name;
     format!(
         "{}(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))\n",
         output,
@@ -32,8 +47,75 @@ pub fn set_stopped(ssa: &mut SSATracker) -> String {
     )
 }
 
+fn static_vars() -> HashMap<String, Identifier> {
+    [
+        "address",
+        "origin",
+        "caller",
+        "callvalue",
+        "calldatasize",
+        "codesize",
+        "gasprice",
+        "coinbase",
+        "timestamp",
+        "number",
+        "difficulty",
+        "gaslimit",
+        "chainid",
+        "basefee",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, name)| {
+        (
+            name.to_string(),
+            identifier(format!("_{name}").as_str(), 1026 + i as u64),
+        )
+    })
+    .collect::<HashMap<_, _>>()
+}
+
 pub fn address(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&address_var()).name
+    ssa.to_smt_variable(&static_vars()["address"]).name
+}
+pub fn origin(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["origin"]).name
+}
+pub fn caller(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["caller"]).name
+}
+pub fn callvalue(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["callvalue"]).name
+}
+pub fn calldatasize(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["calldatasize"]).name
+}
+pub fn codesize(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["codesize"]).name
+}
+pub fn gasprice(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["gasprice"]).name
+}
+pub fn coinbase(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["coinbase"]).name
+}
+pub fn timestamp(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["timestamp"]).name
+}
+pub fn number(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["number"]).name
+}
+pub fn difficulty(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["difficulty"]).name
+}
+pub fn gaslimit(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["gaslimit"]).name
+}
+pub fn chainid(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["chainid"]).name
+}
+pub fn basefee(ssa: &mut SSATracker) -> String {
+    ssa.to_smt_variable(&static_vars()["basefee"]).name
 }
 
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
@@ -73,10 +155,6 @@ fn revert_flag() -> Identifier {
 
 fn stop_flag() -> Identifier {
     identifier("_stop", 1025)
-}
-
-fn address_var() -> Identifier {
-    identifier("_address", 1026)
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
