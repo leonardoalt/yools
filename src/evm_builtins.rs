@@ -1,12 +1,13 @@
 use crate::common::SMTVariable;
-use crate::encoder::EVMContext;
+use crate::evm_context;
+use crate::ssa_tracker::SSATracker;
 use yultsur::dialect::Builtin;
 
 pub fn encode_builtin_call(
     builtin: &Builtin,
     arguments: Vec<SMTVariable>,
     return_vars: &[SMTVariable],
-    context: &mut impl EVMContext,
+    ssa: &mut SSATracker,
 ) -> String {
     let single_return = |value: String| {
         assert_eq!(return_vars.len(), 1);
@@ -25,10 +26,7 @@ pub fn encode_builtin_call(
     };
 
     match builtin.name.as_str() {
-        "stop" => {
-            context.set_stopped();
-            String::new()
-        }
+        "stop" => evm_context::set_stopped(ssa),
         "add" => direct("bvadd"),
         "sub" => direct("bvsub"),
         "mul" => direct("bvmul"),
@@ -102,10 +100,7 @@ pub fn encode_builtin_call(
         "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "create2" => panic!("Builtin {} not implemented", builtin.name), // TODO
-        "revert" => {
-            context.set_reverted();
-            String::new()
-        }
+        "revert" => evm_context::set_reverted(ssa),
         "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
         "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
         _ => panic!("Invalid builtin {}", builtin.name),

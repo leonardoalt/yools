@@ -1,5 +1,6 @@
 use crate::common::SMTVariable;
 use crate::evm_builtins::encode_builtin_call;
+use crate::evm_context;
 use crate::ssa_tracker::SSATracker;
 use std::collections::HashMap;
 use yultsur::dialect::{Dialect, EVMDialect};
@@ -7,32 +8,11 @@ use yultsur::resolver::FunctionSignature;
 use yultsur::yul;
 use yultsur::yul::*;
 
-struct Context {
-    revert_flag: Identifier,
-}
-
-impl Context {
-    fn new() -> Context {
-        Context {
-            revert_flag: Identifier {
-                id: IdentifierID::Declaration(666),
-                name: "revert_flag".to_string(),
-            },
-        }
-    }
-}
-
 pub struct Encoder {
     function_signatures: HashMap<u64, FunctionSignature>,
     expression_counter: u64,
     ssa_tracker: SSATracker,
     output: String,
-    context: Context,
-}
-
-pub trait EVMContext {
-    fn set_reverted(&mut self);
-    fn set_stopped(&mut self);
 }
 
 pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
@@ -76,8 +56,12 @@ impl Encoder {
             expression_counter: 0,
             ssa_tracker: SSATracker::new(),
             output: String::new(),
-            context: Context::new(),
         }
+    }
+
+    pub fn encode_context_init(&mut self) {
+        let output = evm_context::init(&mut self.ssa_tracker);
+        self.out(output);
     }
 
     pub fn encode(&mut self, block: &Block) {
@@ -268,7 +252,8 @@ impl Encoder {
                     .map(|_i| self.new_temporary_variable())
                     .collect();
 
-                let result = encode_builtin_call(builtin, arguments, &return_vars, self);
+                let result =
+                    encode_builtin_call(builtin, arguments, &return_vars, &mut self.ssa_tracker);
                 self.out(result);
                 return_vars
             }
@@ -286,44 +271,11 @@ impl Encoder {
     }
 }
 
-impl EVMContext for Encoder {
-    fn set_reverted(&mut self) {
-        let v = vec![identifier_to_reference(&self.context.revert_flag)];
-        let value = self.encode_literal(&Literal::new("1"));
-        self.encode_assignment_inner(&v, vec![value]);
-    }
-    fn set_stopped(&mut self) {
-        // TODO
-    }
-}
-
-fn identifier_to_reference(identifier: &Identifier) -> Identifier {
-    if let IdentifierID::Declaration(id) = identifier.id {
-        Identifier {
-            id: IdentifierID::Reference(id),
-            name: identifier.name.clone(),
-        }
-    } else {
-        panic!()
-    }
-}
-
 /// Helpers.
 impl Encoder {
-    fn encode_context_init(&mut self) {
-        let v = VariableDeclaration {
-            variables: vec![self.context.revert_flag.clone()],
-            value: Some(Expression::Literal(Literal::new("0"))),
-        };
-
-        self.encode_variable_declaration(&v);
-    }
-
     fn encode_revert_unreachable(&mut self) {
-        self.out(format!(
-            "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
-            self.ssa_tracker.to_smt_variable(&self.context.revert_flag).name
-        ));
+        let output = evm_context::encode_revert_unreachable(&mut self.ssa_tracker);
+        self.out(output);
     }
 
     fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, values: Vec<SMTVariable>) {
