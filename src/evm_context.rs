@@ -17,16 +17,19 @@ pub fn init(ssa: &mut SSATracker) -> String {
 }
 
 pub fn set_reverted(ssa: &mut SSATracker) -> String {
-    let var = ssa.allocate_new_ssa_index(&revert_flag());
-    format!(
-        "(define-const {} (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000001)",
-        var.name
+    assign_variable_if_executing_regularly(
+        ssa,
+        &revert_flag(),
+        "#x0000000000000000000000000000000000000000000000000000000000000001",
     )
 }
 
-pub fn set_stopped(_ssa: &mut SSATracker) -> String {
-    // TOODO
-    String::new()
+pub fn set_stopped(ssa: &mut SSATracker) -> String {
+    assign_variable_if_executing_regularly(
+        ssa,
+        &stop_flag(),
+        "#x0000000000000000000000000000000000000000000000000000000000000001",
+    )
 }
 
 pub fn address(ssa: &mut SSATracker) -> String {
@@ -37,6 +40,30 @@ pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
         ssa.to_smt_variable(&revert_flag()).name
+    )
+}
+
+/// Assigns to the variable if we neither stopped nor reverted. Otherwise, the variable keeps
+/// its value. Increases the SSA index in any case.
+fn assign_variable_if_executing_regularly(
+    ssa: &mut SSATracker,
+    variable: &Identifier,
+    new_value: &str,
+) -> String {
+    let old_value = ssa.to_smt_variable(variable);
+    let update_condition = executing_regularly(ssa);
+    let new_var = ssa.allocate_new_ssa_index(variable);
+    format!(
+        "(define-const {} (_ BitVec 256) (ite {} {} {}))",
+        new_var.name, update_condition, new_value, old_value.name
+    )
+}
+
+fn executing_regularly(ssa: &mut SSATracker) -> String {
+    format!(
+        "(and (= {} #x0000000000000000000000000000000000000000000000000000000000000000) (= {} #x0000000000000000000000000000000000000000000000000000000000000000))",
+        ssa.to_smt_variable(&revert_flag()).name,
+        ssa.to_smt_variable(&stop_flag()).name
     )
 }
 
