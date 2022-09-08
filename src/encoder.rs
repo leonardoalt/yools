@@ -7,6 +7,7 @@ use yultsur::yul::*;
 
 struct Context {
     revert_flag: Identifier,
+    stop_flag: Identifier,
     address: Identifier,
 }
 
@@ -16,6 +17,10 @@ impl Context {
             revert_flag: Identifier {
                 id: IdentifierID::Declaration(666),
                 name: "revert_flag".to_string(),
+            },
+            stop_flag: Identifier {
+                id: IdentifierID::Declaration(665),
+                name: "stop_flag".to_string(),
             },
             address: Identifier {
                 id: IdentifierID::Declaration(667),
@@ -305,12 +310,14 @@ impl Encoder {
 
 impl EVMContext for Encoder {
     fn set_reverted(&mut self) {
-        let v = vec![identifier_to_reference(&self.context.revert_flag)];
-        let value = self.encode_literal(&Literal::new("1"));
-        self.encode_assignment_inner(&v, vec![value]);
+        let new_value = self.encode_literal(&Literal::new("1"));
+        let variable = self.context.revert_flag.clone();
+        self.assign_variable_if_executing_regularly(&variable, new_value);
     }
     fn set_stopped(&mut self) {
-        // TODO
+        let new_value = self.encode_literal(&Literal::new("1"));
+        let variable = self.context.stop_flag.clone();
+        self.assign_variable_if_executing_regularly(&variable, new_value);
     }
     fn address(&self) -> String {
         self.to_smt_variable(&identifier_to_reference(&self.context.address))
@@ -360,12 +367,45 @@ impl Encoder {
         ssa_skipped
     }
 
+    /// Assigns to the variable if we neither stopped nor reverted. Otherwise, the variable keeps
+    /// its value. Increases the SSA index in any case.
+    fn assign_variable_if_executing_regularly(
+        &mut self,
+        variable: &Identifier,
+        new_value: SMTVariable,
+    ) {
+        let var_id = match variable.id {
+            IdentifierID::Declaration(id) => id,
+            IdentifierID::Reference(id) => id,
+            _ => panic!(),
+        };
+        let old_value = self.to_smt_variable(variable);
+        let update_condition = self.executing_regularly();
+
+        self.allocate_new_ssa_index(var_id);
+
+        self.out(format!(
+            "(define-const {} (_ BitVec 256) (ite {} {} {}))",
+            self.to_smt_variable(variable).name,
+            update_condition,
+            new_value.name,
+            old_value.name
+        ));
+    }
+
+    fn executing_regularly(&self) -> String {
+        format!(
+            "(and (= {} #x0000000000000000000000000000000000000000000000000000000000000000) (= {} #x0000000000000000000000000000000000000000000000000000000000000000))",
+            self.to_smt_variable(&self.context.revert_flag).name,
+            self.to_smt_variable(&self.context.stop_flag).name
+        )
+    }
+
     fn encode_context_init(&mut self) {
         let v = VariableDeclaration {
-            variables: vec![self.context.revert_flag.clone()],
-            value: Some(Expression::Literal(Literal::new("0"))),
+            variables: vec![self.context.revert_flag.clone(), self.context.stop_flag.clone()],
+            value: None
         };
-
         self.encode_variable_declaration(&v);
 
         let addr = &self.context.address.clone();

@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
-use yools::encoder::encode_function;
+use yools::encoder::{encode, encode_function};
 use yools::encoder::FunctionVariables;
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
@@ -11,12 +11,19 @@ use yultsur::yul_parser;
 fn encode_first_function(input: &str) -> (String, FunctionVariables) {
     let mut ast = yul_parser::parse_block(&std::format!("{{ {} }}", input));
     let signatures = resolve::<EVMDialect>(&mut ast);
-    if let Some(Statement::FunctionDefinition(function)) = ast.statements.iter().next() {
+    if let Some(Statement::FunctionDefinition(function)) = &ast.statements.iter().next() {
         encode_function(function, signatures)
     } else {
         panic!("Could not find function.")
     }
 }
+
+fn encode_no_revert(input: &str) -> String {
+    let mut ast = yul_parser::parse_block(input);
+    let signatures = resolve::<EVMDialect>(&mut ast);
+    encode(&ast, signatures)
+}
+
 
 fn query_smt(query: &String) -> bool {
     let query = format!("{}\n{}", query, "(check-sat)");
@@ -312,4 +319,32 @@ fn address() {
         &encoding,
         &std::format!("(= {} #x{:064X})", variables.returns[0].name, 1,),
     );
+}
+
+
+#[test]
+fn revert_after_stop() {
+    let encoding = encode_no_revert(
+        r#"
+        {
+            stop()
+            revert(0, 0)
+        }"#,
+    );
+    assert!(!query_smt(&encoding), "Solver claims the code can be reverting. Query: {encoding}");
+}
+
+
+#[test]
+fn stop_after_revert() {
+    let encoding = encode_no_revert(
+        r#"
+        {
+            revert(0, 0)
+            stop()
+        }"#,
+    );
+    // TODO we should actually check that this always reverts.
+    // Currently, we only check that it can revert.
+    assert!(query_smt(&encoding), "Solver claims the code never reverts. Query: {encoding}");
 }
