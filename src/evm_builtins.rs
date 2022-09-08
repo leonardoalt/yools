@@ -1,4 +1,5 @@
-use crate::encoder::{EVMContext, SMTVariable};
+use crate::common::SMTVariable;
+use crate::encoder::EVMContext;
 use yultsur::dialect::Builtin;
 
 pub fn encode_builtin_call(
