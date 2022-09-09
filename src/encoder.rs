@@ -1,41 +1,56 @@
 use crate::common::SMTVariable;
-use crate::evm_builtins::encode_builtin_call;
 use crate::evm_context;
 use crate::ssa_tracker::SSATracker;
-use std::collections::HashMap;
-use yultsur::dialect::{Dialect, EVMDialect};
+
+use yultsur::dialect::{Builtin, Dialect};
 use yultsur::resolver::FunctionSignature;
 use yultsur::yul;
 use yultsur::yul::*;
 
-pub struct Encoder {
+use std::collections::HashMap;
+
+pub trait Instructions: Default + Dialect {
+    fn encode_builtin_call(
+        &self,
+        builtin: &Builtin,
+        arguments: Vec<SMTVariable>,
+        return_vars: &[SMTVariable],
+        ssa: &mut SSATracker,
+    ) -> String;
+}
+
+pub struct Encoder<InstructionsType> {
     function_signatures: HashMap<u64, FunctionSignature>,
     expression_counter: u64,
     ssa_tracker: SSATracker,
     output: String,
+    interpreter: InstructionsType,
 }
 
-pub fn encode(ast: &Block, function_signatures: HashMap<u64, FunctionSignature>) -> String {
-    let mut encoder = Encoder::new(function_signatures);
+pub fn encode<T: Instructions>(
+    ast: &Block,
+    function_signatures: HashMap<u64, FunctionSignature>,
+) -> String {
+    let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode(ast);
     encoder.output
 }
 
-pub fn encode_revert_unreachable(
+pub fn encode_revert_unreachable<T: Instructions>(
     ast: &Block,
     function_signatures: HashMap<u64, FunctionSignature>,
 ) -> String {
-    let mut encoder = Encoder::new(function_signatures);
+    let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode(ast);
     encoder.encode_revert_unreachable();
     encoder.output
 }
 
-pub fn encode_function(
+pub fn encode_function<T: Instructions>(
     function: &FunctionDefinition,
     function_signatures: HashMap<u64, FunctionSignature>,
 ) -> (String, FunctionVariables) {
-    let mut encoder = Encoder::new(function_signatures);
+    let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode_context_init();
     let variables = encoder.encode_function(function);
     (encoder.output, variables)
@@ -49,13 +64,14 @@ pub struct FunctionVariables {
     pub returns: Vec<SMTVariable>,
 }
 
-impl Encoder {
-    fn new(function_signatures: HashMap<u64, FunctionSignature>) -> Encoder {
+impl<InstructionsType: Instructions> Encoder<InstructionsType> {
+    fn new(function_signatures: HashMap<u64, FunctionSignature>) -> Encoder<InstructionsType> {
         Encoder {
             function_signatures,
             expression_counter: 0,
             ssa_tracker: SSATracker::new(),
             output: String::new(),
+            interpreter: InstructionsType::default(),
         }
     }
 
@@ -247,13 +263,17 @@ impl Encoder {
 
         match call.function.id {
             IdentifierID::BuiltinReference => {
-                let builtin = &EVMDialect::builtin(&call.function.name).unwrap();
+                let builtin = &InstructionsType::builtin(&call.function.name).unwrap();
                 let return_vars: Vec<SMTVariable> = (0..builtin.returns)
                     .map(|_i| self.new_temporary_variable())
                     .collect();
 
-                let result =
-                    encode_builtin_call(builtin, arguments, &return_vars, &mut self.ssa_tracker);
+                let result = self.interpreter.encode_builtin_call(
+                    builtin,
+                    arguments,
+                    &return_vars,
+                    &mut self.ssa_tracker,
+                );
                 self.out(result);
                 return_vars
             }
@@ -272,7 +292,7 @@ impl Encoder {
 }
 
 /// Helpers.
-impl Encoder {
+impl<T> Encoder<T> {
     fn encode_revert_unreachable(&mut self) {
         let output = evm_context::encode_revert_unreachable(&mut self.ssa_tracker);
         self.out(output);

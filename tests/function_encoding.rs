@@ -1,5 +1,6 @@
 use yools::encoder::encode_function;
 use yools::encoder::FunctionVariables;
+use yools::evm_builtins::EVMInstructions;
 use yools::solver;
 use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
@@ -10,7 +11,7 @@ fn encode_first_function(input: &str) -> (String, FunctionVariables) {
     let mut ast = yul_parser::parse_block(&std::format!("{{ {} }}", input));
     let signatures = resolve::<EVMDialect>(&mut ast);
     if let Some(Statement::FunctionDefinition(function)) = ast.statements.iter().next() {
-        encode_function(function, signatures)
+        encode_function::<EVMInstructions>(function, signatures)
     } else {
         panic!("Could not find function.")
     }

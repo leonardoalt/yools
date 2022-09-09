@@ -1,6 +1,7 @@
 use std::{fs, fs::File, path::Path};
 
 use yools::encoder;
+use yools::evm_builtins::EVMInstructions;
 use yools::solver;
 
 use yultsur::dialect;
@@ -41,7 +42,7 @@ fn test_file_revert_unreachable(test_file: &str) {
     let mut ast = yul_parser::parse_block(&content);
     let signatures = yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable(&ast, signatures);
+    let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast, signatures);
     unsat(&query);
 }
 
@@ -66,7 +67,7 @@ fn test_file_syntax(test_file: &str, update: bool) {
     let mut ast = yul_parser::parse_block(&content);
     let signatures = yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable(&ast, signatures);
+    let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast, signatures);
 
     let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");
     if query != expected {
