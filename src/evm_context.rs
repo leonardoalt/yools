@@ -70,7 +70,7 @@ fn static_vars() -> BTreeMap<String, Identifier> {
             identifier(format!("_{name}").as_str(), 1026 + i as u64),
         )
     })
-    .collect::<BTreeMap<_, _>>()
+    .collect()
 }
 
 pub fn address(ssa: &mut SSATracker) -> String {

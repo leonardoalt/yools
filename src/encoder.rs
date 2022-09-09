@@ -259,7 +259,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 value.pop().unwrap()
             })
             .rev()
-            .collect::<Vec<_>>();
+            .collect();
 
         match call.function.id {
             IdentifierID::BuiltinReference => {
