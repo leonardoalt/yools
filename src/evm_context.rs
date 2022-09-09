@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
@@ -11,10 +11,8 @@ pub fn init(ssa: &mut SSATracker) -> String {
             var.name
         )
     }).collect::<Vec<_>>().join("");
-    let mut static_var_list = static_vars().into_iter().collect::<Vec<_>>();
-    static_var_list.sort_by_key(|(name, _)| name.clone());
     output.push_str(
-        static_var_list
+        static_vars()
             .into_iter()
             .map(|(_name, identifier)| {
                 let var = ssa.introduce_variable(&as_declaration(identifier));
@@ -47,7 +45,7 @@ pub fn set_stopped(ssa: &mut SSATracker) -> String {
     )
 }
 
-fn static_vars() -> HashMap<String, Identifier> {
+fn static_vars() -> BTreeMap<String, Identifier> {
     [
         "address",
         "origin",
@@ -72,7 +70,7 @@ fn static_vars() -> HashMap<String, Identifier> {
             identifier(format!("_{name}").as_str(), 1026 + i as u64),
         )
     })
-    .collect::<HashMap<_, _>>()
+    .collect::<BTreeMap<_, _>>()
 }
 
 pub fn address(ssa: &mut SSATracker) -> String {
