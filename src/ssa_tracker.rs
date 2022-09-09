@@ -1,28 +1,28 @@
 use crate::common::SMTVariable;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::default::Default;
 use yultsur::yul::*;
 
 #[derive(Default)]
 pub struct SSATracker {
     /// Current SSA index for each variable
-    current: HashMap<u64, u64>,
+    current: BTreeMap<u64, u64>,
     /// Highest SSA index (used for next assignment) for each variable
     /// TODO "highest" and "names" could be shared by copies of SSATracker...
-    highest: HashMap<u64, u64>,
-    names: HashMap<u64, String>,
+    highest: BTreeMap<u64, u64>,
+    names: BTreeMap<u64, String>,
 }
 
 impl SSATracker {
-    pub fn copy_current_ssa(&self) -> HashMap<u64, u64> {
+    pub fn copy_current_ssa(&self) -> BTreeMap<u64, u64> {
         self.current.clone()
     }
 
-    pub fn take_current_ssa(&mut self) -> HashMap<u64, u64> {
+    pub fn take_current_ssa(&mut self) -> BTreeMap<u64, u64> {
         std::mem::take(&mut self.current)
     }
 
-    pub fn set_current_ssa(&mut self, current_ssa: HashMap<u64, u64>) {
+    pub fn set_current_ssa(&mut self, current_ssa: BTreeMap<u64, u64>) {
         self.current = current_ssa;
     }
 
@@ -35,7 +35,7 @@ impl SSATracker {
         &mut self,
         skip_condition: String,
         // this is the stored list
-        ssa_skipped: HashMap<u64, u64>,
+        ssa_skipped: BTreeMap<u64, u64>,
     ) -> String {
         let ssa_branch = std::mem::replace(&mut self.current, ssa_skipped);
         // Now "self.current" are the skipped values - we just update them.
