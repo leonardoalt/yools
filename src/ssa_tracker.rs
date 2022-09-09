@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use yultsur::yul::*;
 
+#[derive(Default)]
 pub struct SSATracker {
     /// Current SSA index for each variable
     current: HashMap<u64, u64>,
@@ -13,14 +14,6 @@ pub struct SSATracker {
 }
 
 impl SSATracker {
-    pub fn new() -> Self {
-        SSATracker {
-            current: Default::default(),
-            highest: Default::default(),
-            names: Default::default(),
-        }
-    }
-
     pub fn copy_current_ssa(&self) -> HashMap<u64, u64> {
         self.current.clone()
     }

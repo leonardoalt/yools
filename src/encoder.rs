@@ -69,7 +69,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         Encoder {
             function_signatures,
             expression_counter: 0,
-            ssa_tracker: SSATracker::new(),
+            ssa_tracker: SSATracker::default(),
             output: String::new(),
             interpreter: InstructionsType::default(),
         }
@@ -298,7 +298,7 @@ impl<T> Encoder<T> {
         self.out(output);
     }
 
-    fn encode_assignment_inner(&mut self, variables: &Vec<Identifier>, values: Vec<SMTVariable>) {
+    fn encode_assignment_inner(&mut self, variables: &[Identifier], values: Vec<SMTVariable>) {
         assert_eq!(values.len(), variables.len());
 
         for (v, val) in variables.iter().zip(values.iter()) {
