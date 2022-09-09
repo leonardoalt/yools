@@ -3,7 +3,7 @@ use yultsur::yul;
 
 use std::collections::HashMap;
 
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct Node(usize);
 
 #[derive(Clone, Hash, PartialEq, Debug)]
@@ -29,7 +29,7 @@ pub enum Edge {
     FunctionExit,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CFG {
     pub graph: HashMap<Node, Vec<(Node, Edge)>>,
     pub rev_graph: HashMap<Node, Vec<(Node, Edge)>>,
@@ -38,24 +38,7 @@ pub struct CFG {
     pub functions: HashMap<String, (Node, Node)>,
 }
 
-impl Default for CFG {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl CFG {
-    pub fn new() -> CFG {
-        CFG {
-            graph: HashMap::new(),
-            rev_graph: HashMap::new(),
-            blocks: HashMap::new(),
-            functions: HashMap::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CFGBuilder {
     cfg: CFG,
     counter: usize,
@@ -69,26 +52,9 @@ pub struct CFGBuilder {
     fun_defs: Vec<String>,
 }
 
-impl Default for CFGBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl CFGBuilder {
-    pub fn new() -> CFGBuilder {
-        CFGBuilder {
-            cfg: CFG::new(),
-            counter: 0,
-            current: Node(0),
-            statement_acc: vec![],
-            loops: vec![],
-            fun_defs: vec![],
-        }
-    }
-
     pub fn build(ast: yul::Statement) -> CFG {
-        let mut builder = CFGBuilder::new();
+        let mut builder = CFGBuilder::default();
 
         builder.add_node(builder.current.clone());
         builder.add_rev_node(builder.current.clone());
