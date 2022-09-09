@@ -19,6 +19,7 @@ pub trait Instructions: Default + Dialect {
     ) -> String;
 }
 
+#[derive(Default)]
 pub struct Encoder<InstructionsType> {
     function_signatures: BTreeMap<u64, FunctionSignature>,
     expression_counter: u64,
@@ -31,7 +32,7 @@ pub fn encode<T: Instructions>(
     ast: &Block,
     function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> String {
-    let mut encoder = Encoder::<T>::new(function_signatures);
+    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
     encoder.encode(ast);
     encoder.output
 }
@@ -40,7 +41,7 @@ pub fn encode_revert_unreachable<T: Instructions>(
     ast: &Block,
     function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> String {
-    let mut encoder = Encoder::<T>::new(function_signatures);
+    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
     encoder.encode(ast);
     encoder.encode_revert_unreachable();
     encoder.output
@@ -50,7 +51,7 @@ pub fn encode_function<T: Instructions>(
     function: &FunctionDefinition,
     function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> (String, FunctionVariables) {
-    let mut encoder = Encoder::<T>::new(function_signatures);
+    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
     encoder.encode_context_init();
     let variables = encoder.encode_function(function);
     (encoder.output, variables)
@@ -65,13 +66,12 @@ pub struct FunctionVariables {
 }
 
 impl<InstructionsType: Instructions> Encoder<InstructionsType> {
-    fn new(function_signatures: BTreeMap<u64, FunctionSignature>) -> Encoder<InstructionsType> {
+    fn with_function_signatures(
+        function_signatures: BTreeMap<u64, FunctionSignature>,
+    ) -> Encoder<InstructionsType> {
         Encoder {
             function_signatures,
-            expression_counter: 0,
-            ssa_tracker: SSATracker::default(),
-            output: String::new(),
-            interpreter: InstructionsType::default(),
+            ..Encoder::default()
         }
     }
 
