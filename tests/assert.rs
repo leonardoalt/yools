@@ -42,6 +42,7 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
 }
 
 #[test]
+#[ignore]
 fn test_assert_pass() {
     let dir = Path::new("./tests/assert_pass");
     assert!(dir.is_dir());
