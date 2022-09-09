@@ -3,7 +3,7 @@ use crate::evm_context;
 use crate::ssa_tracker::SSATracker;
 
 use yultsur::dialect::{Builtin, Dialect};
-use yultsur::resolver::FunctionSignature;
+use yultsur::visitor::ASTVisitor;
 use yultsur::yul;
 use yultsur::yul::*;
 
@@ -21,40 +21,24 @@ pub trait Instructions: Default + Dialect {
 
 #[derive(Default)]
 pub struct Encoder<InstructionsType> {
-    function_signatures: BTreeMap<u64, FunctionSignature>,
+    function_definitions: BTreeMap<u64, yul::FunctionDefinition>,
     expression_counter: u64,
     ssa_tracker: SSATracker,
     output: String,
     interpreter: InstructionsType,
 }
 
-pub fn encode<T: Instructions>(
-    ast: &Block,
-    function_signatures: BTreeMap<u64, FunctionSignature>,
-) -> String {
-    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
+pub fn encode<T: Instructions>(ast: &Block) -> String {
+    let mut encoder = Encoder::<T>::default();
     encoder.encode(ast);
     encoder.output
 }
 
-pub fn encode_revert_unreachable<T: Instructions>(
-    ast: &Block,
-    function_signatures: BTreeMap<u64, FunctionSignature>,
-) -> String {
-    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
+pub fn encode_revert_unreachable<T: Instructions>(ast: &Block) -> String {
+    let mut encoder = Encoder::<T>::default();
     encoder.encode(ast);
     encoder.encode_revert_unreachable();
     encoder.output
-}
-
-pub fn encode_function<T: Instructions>(
-    function: &FunctionDefinition,
-    function_signatures: BTreeMap<u64, FunctionSignature>,
-) -> (String, FunctionVariables) {
-    let mut encoder = Encoder::<T>::with_function_signatures(function_signatures);
-    encoder.encode_context_init();
-    let variables = encoder.encode_function(function);
-    (encoder.output, variables)
 }
 
 #[derive(Debug, PartialEq)]
@@ -65,24 +49,38 @@ pub struct FunctionVariables {
     pub returns: Vec<SMTVariable>,
 }
 
-impl<InstructionsType: Instructions> Encoder<InstructionsType> {
-    fn with_function_signatures(
-        function_signatures: BTreeMap<u64, FunctionSignature>,
-    ) -> Encoder<InstructionsType> {
-        Encoder {
-            function_signatures,
-            ..Encoder::default()
+#[derive(Default)]
+struct FunctionDefinitionCollector {
+    function_definitions: BTreeMap<u64, yul::FunctionDefinition>,
+}
+
+impl ASTVisitor for FunctionDefinitionCollector {
+    fn visit_function_definition(&mut self, fun_def: &FunctionDefinition) {
+        match fun_def.name.id {
+            IdentifierID::Declaration(id) => {
+                self.function_definitions.insert(id, fun_def.clone());
+            }
+            _ => panic!(),
         }
     }
+}
 
-    pub fn encode_context_init(&mut self) {
+impl<InstructionsType: Instructions> Encoder<InstructionsType> {
+    pub fn encode(&mut self, block: &Block) {
+        self.encode_context_init();
+        self.collect_function_definitions(block);
+        self.encode_block(block);
+    }
+
+    fn encode_context_init(&mut self) {
         let output = evm_context::init(&mut self.ssa_tracker);
         self.out(output);
     }
 
-    pub fn encode(&mut self, block: &Block) {
-        self.encode_context_init();
-        self.encode_block(block);
+    fn collect_function_definitions(&mut self, block: &Block) {
+        let mut collector = FunctionDefinitionCollector::default();
+        collector.visit_block(block);
+        self.function_definitions = collector.function_definitions;
     }
 
     /// Encodes the given function, potentially re-creating copies of all local variables
@@ -278,10 +276,16 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 return_vars
             }
             IdentifierID::Reference(id) => {
-                let returns = self.function_signatures[&id].returns;
-                (0..returns)
-                    .map(|_i| self.new_temporary_variable())
-                    .collect()
+                let fun_def = self.function_definitions[&id].clone();
+                let function_vars = self.encode_function(&fun_def);
+                assert!(arguments.len() == function_vars.parameters.len());
+                arguments
+                    .iter()
+                    .zip(function_vars.parameters)
+                    .for_each(|(arg, param)| {
+                        self.out(format!("(assert (= {} {}))", arg.name, param.name))
+                    });
+                function_vars.returns
             }
             _ => panic!(
                 "Unexpected reference in function call: {:?}",

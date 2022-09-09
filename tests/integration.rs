@@ -102,9 +102,9 @@ fn test_file_revert_unreachable(test_file: &str) {
     let content = fs::read_to_string(&test_file).expect("I need to read this file.");
 
     let mut ast = yul_parser::parse_block(&content);
-    let signatures = yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
+    yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast, signatures);
+    let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
     unsat(&query);
 }
 
@@ -114,9 +114,9 @@ fn test_file_assert_pass(test_file: &str) {
     let content = fs::read_to_string(&test_file).expect("I need to read this file.");
 
     let mut ast = yul_parser::parse_block(&content);
-    let signatures = yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
+    yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
 
-    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast, signatures);
+    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
     unsat(&query);
 }
 
@@ -139,9 +139,9 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
     let content = fs::read_to_string(&test_file).expect("I need to read this file.");
 
     let mut ast = yul_parser::parse_block(&content);
-    let signatures = yultsur::resolver::resolve::<InstructionsType>(&mut ast);
+    yultsur::resolver::resolve::<InstructionsType>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable::<InstructionsType>(&ast, signatures);
+    let query = encoder::encode_revert_unreachable::<InstructionsType>(&ast);
 
     let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");
     if query != expected {

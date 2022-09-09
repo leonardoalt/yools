@@ -20,9 +20,9 @@ fn main() {
     file.read_to_string(&mut content).unwrap();
 
     let mut ast = yul_parser::parse_block(&content);
-    let signatures = resolve::<EVMDialect>(&mut ast);
+    resolve::<EVMDialect>(&mut ast);
 
-    let query = yools::encoder::encode::<EVMInstructions>(&ast, signatures);
+    let query = yools::encoder::encode::<EVMInstructions>(&ast);
     let query = format!("{}\n{}", query, "(check-sat)");
 
     println!("{}", query);
