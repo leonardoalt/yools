@@ -7,7 +7,7 @@ use yultsur::resolver::FunctionSignature;
 use yultsur::yul;
 use yultsur::yul::*;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub trait Instructions: Default + Dialect {
     fn encode_builtin_call(
@@ -20,7 +20,7 @@ pub trait Instructions: Default + Dialect {
 }
 
 pub struct Encoder<InstructionsType> {
-    function_signatures: HashMap<u64, FunctionSignature>,
+    function_signatures: BTreeMap<u64, FunctionSignature>,
     expression_counter: u64,
     ssa_tracker: SSATracker,
     output: String,
@@ -29,7 +29,7 @@ pub struct Encoder<InstructionsType> {
 
 pub fn encode<T: Instructions>(
     ast: &Block,
-    function_signatures: HashMap<u64, FunctionSignature>,
+    function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> String {
     let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode(ast);
@@ -38,7 +38,7 @@ pub fn encode<T: Instructions>(
 
 pub fn encode_revert_unreachable<T: Instructions>(
     ast: &Block,
-    function_signatures: HashMap<u64, FunctionSignature>,
+    function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> String {
     let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode(ast);
@@ -48,7 +48,7 @@ pub fn encode_revert_unreachable<T: Instructions>(
 
 pub fn encode_function<T: Instructions>(
     function: &FunctionDefinition,
-    function_signatures: HashMap<u64, FunctionSignature>,
+    function_signatures: BTreeMap<u64, FunctionSignature>,
 ) -> (String, FunctionVariables) {
     let mut encoder = Encoder::<T>::new(function_signatures);
     encoder.encode_context_init();
@@ -65,7 +65,7 @@ pub struct FunctionVariables {
 }
 
 impl<InstructionsType: Instructions> Encoder<InstructionsType> {
-    fn new(function_signatures: HashMap<u64, FunctionSignature>) -> Encoder<InstructionsType> {
+    fn new(function_signatures: BTreeMap<u64, FunctionSignature>) -> Encoder<InstructionsType> {
         Encoder {
             function_signatures,
             expression_counter: 0,
