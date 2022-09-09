@@ -56,12 +56,18 @@ fn test_assert_pass() {
 
 #[test]
 fn test_syntax() {
-    test_dir("./tests/syntax", test_file_syntax_no_update::<EVMInstructions>);
+    test_dir(
+        "./tests/syntax",
+        test_file_syntax_no_update::<EVMInstructions>,
+    );
 }
 
 #[test]
 fn test_syntax_assert_pass() {
-    test_dir("./tests/assert_pass", test_file_syntax_no_update::<EVMInstructionsWithAssert>);
+    test_dir(
+        "./tests/assert_pass",
+        test_file_syntax_no_update::<EVMInstructionsWithAssert>,
+    );
 }
 
 #[test]
@@ -73,7 +79,10 @@ fn test_syntax_update() {
 #[test]
 #[ignore]
 fn test_syntax_assert_pass_update() {
-    test_dir("./tests/assert_pass", test_file_syntax_update::<EVMInstructionsWithAssert>);
+    test_dir(
+        "./tests/assert_pass",
+        test_file_syntax_update::<EVMInstructionsWithAssert>,
+    );
 }
 
 fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
