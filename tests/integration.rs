@@ -68,7 +68,12 @@ fn test_syntax_assert_pass() {
 #[ignore]
 fn test_syntax_update() {
     test_dir("./tests/syntax", test_file_syntax_update::<EVMInstructions>);
-    //test_dir("./tests/assert_pass", test_file_syntax_update::<EVMInstructionsWithAssert>);
+}
+
+#[test]
+#[ignore]
+fn test_syntax_assert_pass_update() {
+    test_dir("./tests/assert_pass", test_file_syntax_update::<EVMInstructionsWithAssert>);
 }
 
 fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
@@ -116,7 +121,7 @@ fn test_file_syntax_update<T: Instructions>(test_file: &str) {
 
 fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, update: bool) {
     assert!(Path::new(&test_file).exists());
-    let expect_name = format!("{}.expect", test_file);
+    let expect_name = format!("{}.smt2", test_file);
     let expectation = Path::new(&expect_name);
     if !expectation.exists() {
         assert!(File::create(&expectation).is_ok());
