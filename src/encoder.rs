@@ -41,7 +41,7 @@ pub fn encode_revert_unreachable<T: Instructions>(ast: &Block) -> String {
     encoder.output
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FunctionVariables {
     /// smtlib2 names of the initial values of the function parameters
     pub parameters: Vec<SMTVariable>,
@@ -204,7 +204,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         for Case { literal, body } in &switch.cases {
             // TODO default case is not yet implemented because
             // the ITE expression is complicated.
-            assert!(*literal != None);
+            assert!(literal.is_some());
             self.ssa_tracker.set_current_ssa(pre_switch_ssa.clone());
 
             self.encode_block(body);
