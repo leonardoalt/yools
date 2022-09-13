@@ -1,6 +1,6 @@
-use crate::common::SMTVariable;
 use crate::encoder::Instructions;
 use crate::evm_context;
+use crate::smt::SMTVariable;
 use crate::ssa_tracker::SSATracker;
 use yultsur::dialect::{Builtin, Dialect, EVMDialect};
 

@@ -1,4 +1,4 @@
-use crate::common::SMTVariable;
+use crate::smt::{SMTFormat, SMTVariable};
 use std::collections::BTreeMap;
 use std::default::Default;
 use yultsur::yul::*;
@@ -33,7 +33,7 @@ impl SSATracker {
     #[must_use]
     pub fn join_branches(
         &mut self,
-        skip_condition: String,
+        skip_condition: impl SMTFormat,
         // this is the stored list
         ssa_skipped: BTreeMap<u64, u64>,
     ) -> String {
@@ -49,7 +49,7 @@ impl SSATracker {
                     Some(format!(
                         "(define-const {} (_ BitVec 256) (ite {} {} {}))\n",
                         self.id_to_smt_variable(*key, new_ssa).name,
-                        skip_condition,
+                        skip_condition.as_smt(),
                         self.id_to_smt_variable(*key, skipped_idx).name,
                         self.id_to_smt_variable(*key, *value).name,
                     ))
