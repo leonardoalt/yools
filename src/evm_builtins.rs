@@ -82,7 +82,7 @@ impl Instructions for EVMInstructions {
             "origin" => single_return(evm_context::origin(ssa)),
             "caller" => single_return(evm_context::caller(ssa)),
             "callvalue" => single_return(evm_context::callvalue(ssa)),
-            "calldataload" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "calldataload" => single_return(evm_context::calldataload(&arguments[0].name, ssa)),
             "calldatasize" => single_return(evm_context::calldatasize(ssa)),
             "calldatacopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "codesize" => single_return(evm_context::codesize(ssa)),

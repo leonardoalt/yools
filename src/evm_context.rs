@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Write;
 
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
@@ -22,6 +23,13 @@ pub fn init(ssa: &mut SSATracker) -> String {
             .join("")
             .as_str(),
     );
+
+    let _ = writeln!(
+        output,
+        "(declare-fun {} ((_ BitVec 256)) (_ BitVec 8))",
+        calldata().name
+    );
+    // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = ssa.to_smt_variable(&static_vars()["address"]).name;
     format!(
         "{}(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))\n",
@@ -67,7 +75,7 @@ fn static_vars() -> BTreeMap<String, Identifier> {
     .map(|(i, name)| {
         (
             name.to_string(),
-            identifier(format!("_{name}").as_str(), 1026 + i as u64),
+            identifier(format!("_{name}").as_str(), 2048 + i as u64),
         )
     })
     .collect()
@@ -116,6 +124,14 @@ pub fn basefee(ssa: &mut SSATracker) -> String {
     ssa.to_smt_variable(&static_vars()["basefee"]).name
 }
 
+pub fn calldataload(index: &String, _ssa: &mut SSATracker) -> String {
+    let arguments = (0..32)
+        .map(|i| format!("({} (bvadd {} #x{:064X}))", calldata().name, index, i))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("(concat {})", arguments)
+}
+
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
@@ -153,6 +169,10 @@ fn revert_flag() -> Identifier {
 
 fn stop_flag() -> Identifier {
     identifier("_stop", 1025)
+}
+
+fn calldata() -> Identifier {
+    identifier("_calldata", 1026)
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
