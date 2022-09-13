@@ -1,10 +1,10 @@
 use std::{fs, fs::File, path::Path};
 
-use yools::common::SMTVariable;
 use yools::encoder;
 use yools::encoder::Instructions;
 use yools::evm_builtins::EVMInstructions;
 use yools::evm_context;
+use yools::smt::SMTVariable;
 use yools::solver;
 use yools::ssa_tracker::SSATracker;
 

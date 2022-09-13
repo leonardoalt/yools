@@ -1,5 +1,5 @@
-use crate::common::SMTVariable;
 use crate::evm_context;
+use crate::smt::*;
 use crate::ssa_tracker::SSATracker;
 
 use yultsur::dialect::{Builtin, Dialect};
@@ -89,7 +89,10 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     pub fn encode_function(&mut self, function: &FunctionDefinition) -> FunctionVariables {
         for param in &function.parameters {
             let var = self.ssa_tracker.introduce_variable(param);
-            self.out(format!("(declare-const {} (_ BitVec 256))", var.name));
+            self.out(SMTStatement::DeclareConst(
+                var.name.as_smt(),
+                SMTSort::bitvec(256),
+            ))
         }
         let parameters = self.ssa_tracker.to_smt_variables(&function.parameters);
         self.encode_variable_declaration(&VariableDeclaration {
@@ -160,9 +163,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         self.encode_block(&expr.body);
 
         let output = self.ssa_tracker.join_branches(
-            format!(
-                "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
-                cond[0].name
+            SMTExpression::Eq(
+                Box::new(cond[0].name.clone()),
+                Box::new(SMTLiteral::bv256_zero()),
             ),
             prev_ssa,
         );
@@ -185,9 +188,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             self.encode_block(&for_loop.post);
 
             let output = self.ssa_tracker.join_branches(
-                format!(
-                    "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
-                    cond[0].name
+                SMTExpression::Eq(
+                    Box::new(cond[0].name.clone()),
+                    Box::new(SMTLiteral::bv256_zero()),
                 ),
                 prev_ssa,
             );
@@ -209,11 +212,10 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
             self.encode_block(body);
 
-            let skip_condition = format!(
-                "(not (= {} {}))",
-                discriminator[0].name,
+            let skip_condition = SMTExpression::Not(Box::new(SMTExpression::Eq(
+                Box::new(discriminator[0].name.clone()),
                 self.encode_literal_value(literal.as_ref().unwrap()),
-            );
+            )));
             let output = self
                 .ssa_tracker
                 .join_branches(skip_condition, post_switch_ssa);
@@ -234,10 +236,10 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
         let var = self.new_temporary_variable();
-        self.out(format!(
-            "(define-const {} (_ BitVec 256) {})",
-            &var.name,
-            self.encode_literal_value(literal)
+        self.out(SMTStatement::DefineConst(
+            var.name.as_smt(),
+            SMTSort::bitvec(256),
+            self.encode_literal_value(literal).as_smt(),
         ));
         var
     }
@@ -283,7 +285,10 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     .iter()
                     .zip(function_vars.parameters)
                     .for_each(|(arg, param)| {
-                        self.out(format!("(assert (= {} {}))", arg.name, param.name))
+                        self.out(SMTStatement::Assert(Box::new(SMTExpression::Eq(
+                            Box::new(arg.name.clone()),
+                            Box::new(param.name),
+                        ))))
                     });
                 function_vars.returns
             }
@@ -307,24 +312,21 @@ impl<T> Encoder<T> {
 
         for (v, val) in variables.iter().zip(values.iter()) {
             let var = self.ssa_tracker.allocate_new_ssa_index(v);
-            self.out(format!(
-                "(define-const {} (_ BitVec 256) {})",
-                var.name, val.name
+            self.out(SMTStatement::DefineConst(
+                var.name.as_smt(),
+                SMTSort::bitvec(256),
+                val.name.as_smt(),
             ));
         }
     }
 
-    fn encode_literal_value(&self, literal: &Literal) -> String {
-        if literal.literal.starts_with("0x") {
-            format!(
-                "#x{}{}",
-                "0".repeat(2 + 64 - literal.literal.len()),
-                &literal.literal[2..]
-            )
+    fn encode_literal_value(&self, literal: &Literal) -> Box<SMTLiteral> {
+        Box::new(SMTLiteral::Hex(if literal.literal.starts_with("0x") {
+            format!("{:0>64}", &literal.literal[2..])
         } else {
             // TODO support larger decimal constants.
-            format!("#x{:064X}", &literal.literal.parse::<u128>().unwrap())
-        }
+            format!("{:064X}", &literal.literal.parse::<u128>().unwrap())
+        }))
     }
 
     fn new_temporary_variable(&mut self) -> SMTVariable {
@@ -334,7 +336,7 @@ impl<T> Encoder<T> {
         }
     }
 
-    fn out(&mut self, x: String) {
-        self.output = format!("{}{}\n", self.output, x)
+    fn out(&mut self, x: impl SMTFormat) {
+        self.output = format!("{}{}\n", self.output, x.as_smt())
     }
 }
