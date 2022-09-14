@@ -23,6 +23,15 @@ pub fn init(ssa: &mut SSATracker) -> String {
             .join("")
             .as_str(),
     );
+    let memory_var =
+        ssa.introduce_variable_of_type(&as_declaration(memory()), memory_type().to_string());
+    // TODO memory is zero initially.
+    let _ = writeln!(
+        output,
+        "(declare-const {} {})",
+        memory_var.name,
+        memory_type()
+    );
 
     let _ = writeln!(
         output,
@@ -132,6 +141,33 @@ pub fn calldataload(index: &String, _ssa: &mut SSATracker) -> String {
     format!("(concat {})", arguments)
 }
 
+pub fn mstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
+    let before = ssa.to_smt_variable(&memory());
+    let after = ssa.allocate_new_ssa_index(&memory());
+
+    let stored = (0..32).fold(before.name, |acc, i| {
+        let sub_index = format!("(bvadd {} #x{:064X})", index, i);
+        let byte_value = format!(
+            "((_ extract {} {}) {})",
+            255 - i * 8,
+            256 - (i + 1) * 8,
+            value
+        );
+        format!("(store {} {} {})", acc, sub_index, byte_value,)
+    });
+    format!("(define-const {} {} {})", after.name, memory_type(), stored)
+}
+
+pub fn mload(index: &String, ssa: &mut SSATracker) -> String {
+    let mem = ssa.to_smt_variable(&memory());
+
+    let arguments = (0..32)
+        .map(|i| format!("(select {} (bvadd {} #x{:064X}))", mem.name, index, i))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("(concat {})", arguments)
+}
+
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
@@ -173,6 +209,13 @@ fn stop_flag() -> Identifier {
 
 fn calldata() -> Identifier {
     identifier("_calldata", 1026)
+}
+
+fn memory() -> Identifier {
+    identifier("_memory", 1027)
+}
+fn memory_type() -> &'static str {
+    "(Array (_ BitVec 256) (_ BitVec 8))"
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
