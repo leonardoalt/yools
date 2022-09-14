@@ -1,5 +1,5 @@
 use crate::smt::{SMTFormat, SMTVariable};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use yultsur::yul::*;
 
@@ -11,6 +11,8 @@ pub struct SSATracker {
     /// TODO "highest" and "names" could be shared by copies of SSATracker...
     highest: BTreeMap<u64, u64>,
     names: BTreeMap<u64, String>,
+    /// Types of variables that are NOT 256 bit bitvectors.
+    types: HashMap<u64, String>,
 }
 
 impl SSATracker {
@@ -47,8 +49,9 @@ impl SSATracker {
                 if skipped_idx != *value {
                     let new_ssa = self.allocate_new_ssa_index_by_id(*key);
                     Some(format!(
-                        "(define-const {} (_ BitVec 256) (ite {} {} {}))\n",
+                        "(define-const {} {} (ite {} {} {}))\n",
                         self.id_to_smt_variable(*key, new_ssa).name,
+                        self.type_of_id(*key),
                         skip_condition.as_smt(),
                         self.id_to_smt_variable(*key, skipped_idx).name,
                         self.id_to_smt_variable(*key, *value).name,
@@ -79,6 +82,16 @@ impl SSATracker {
         }
     }
 
+    pub fn introduce_variable_of_type(
+        &mut self,
+        variable: &Identifier,
+        type_: String,
+    ) -> SMTVariable {
+        let var = self.introduce_variable(variable);
+        self.types.insert(self.identifier_to_id(variable), type_);
+        var
+    }
+
     pub fn to_smt_variable(&self, identifier: &Identifier) -> SMTVariable {
         let var_id = self.identifier_to_id(identifier);
         self.id_to_smt_variable(var_id, self.current[&var_id])
@@ -89,6 +102,13 @@ impl SSATracker {
             .iter()
             .map(|i| self.to_smt_variable(i))
             .collect()
+    }
+
+    fn type_of_id(&self, id: u64) -> String {
+        self.types
+            .get(&id)
+            .unwrap_or(&"(_ BitVec 256)".to_string())
+            .clone()
     }
 
     fn allocate_new_ssa_index_by_id(&mut self, var_id: u64) -> u64 {
