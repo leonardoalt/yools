@@ -47,7 +47,7 @@ impl Instructions for EVMInstructions {
             "sdiv" => direct("bvsdiv"),
             "mod" => direct("bvurem"),
             "smod" => direct("bvsmod"), // TODO check if it is bvsmod or bvsrem (they differ in sign)
-            "not" => direct("bvnot"),
+            "not" => single_return(format!("(bvnot {})", arguments[0].name)),
             "lt" => direct("bvult"),
             "gt" => direct("bvugt"),
             "slt" => direct("bvslt"),
@@ -61,9 +61,18 @@ impl Instructions for EVMInstructions {
             "or" => direct("bvor"),
             "xor" => direct("bvxor"),
             "byte" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "shl" => format!("(bvshl {} {})", arguments[1].name, arguments[0].name),
-            "shr" => format!("(bvlshr {} {})", arguments[1].name, arguments[0].name),
-            "sar" => format!("(bvashr {} {})", arguments[1].name, arguments[0].name),
+            "shl" => single_return(format!(
+                "(bvshl {} {})",
+                arguments[1].name, arguments[0].name
+            )),
+            "shr" => single_return(format!(
+                "(bvlshr {} {})",
+                arguments[1].name, arguments[0].name
+            )),
+            "sar" => single_return(format!(
+                "(bvashr {} {})",
+                arguments[1].name, arguments[0].name
+            )),
             "addmod" => panic!("Builtin {} not implemented", builtin.name), // TODO // TODO
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
