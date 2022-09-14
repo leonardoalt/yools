@@ -105,7 +105,7 @@ fn test_file_revert_unreachable(test_file: &str) {
     yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
     let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
-    unsat(&query);
+    unsat(&query, &test_file);
 }
 
 fn test_file_assert_pass(test_file: &str) {
@@ -117,7 +117,7 @@ fn test_file_assert_pass(test_file: &str) {
     yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
 
     let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
-    unsat(&query);
+    unsat(&query, &test_file);
 }
 
 fn test_file_syntax_no_update<T: Instructions>(test_file: &str) {
@@ -153,10 +153,11 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
     }
 }
 
-fn unsat(query: &String) {
+fn unsat(query: &String, file: &str) {
     assert!(
         !solver::query_smt(query),
-        "Should be UNSAT. Query:\n{}",
+        "\n--------------------\n{} FAILED\n--------------------\nShould be UNSAT. Query:\n{}",
+        file,
         query
     );
 }
