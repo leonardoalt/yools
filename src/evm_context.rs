@@ -29,7 +29,6 @@ pub fn init(ssa: &mut SSATracker) -> String {
         "(declare-fun {} ((_ BitVec 256)) (_ BitVec 8))",
         calldata().name
     );
-    // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = ssa.to_smt_variable(&static_vars()["address"]).name;
     format!(
         "{}(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))\n",
@@ -124,12 +123,22 @@ pub fn basefee(ssa: &mut SSATracker) -> String {
     ssa.to_smt_variable(&static_vars()["basefee"]).name
 }
 
-pub fn calldataload(index: &String, _ssa: &mut SSATracker) -> String {
-    let arguments = (0..32)
-        .map(|i| format!("({} (bvadd {} #x{:064X}))", calldata().name, index, i))
+pub fn calldataload(index: &String, ssa: &mut SSATracker) -> String {
+    let components = (0..32)
+        .map(|i| {
+            // TODO use a let expression for this (it is used twice)?
+            let absolute_index = format!("(bvadd {} #x{:064X})", index, i);
+            let is_beyond_calldatasize = format!("(bvuge {} {})", absolute_index, calldatasize(ssa));
+            format!(
+                "(ite {} #x00 ({} {}))",
+                is_beyond_calldatasize,
+                calldata().name,
+                absolute_index,
+            )
+        })
         .collect::<Vec<_>>()
         .join(" ");
-    format!("(concat {})", arguments)
+    format!("(concat {})", components)
 }
 
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
