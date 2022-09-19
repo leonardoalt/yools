@@ -50,11 +50,6 @@ fn test_revert_unreachable() {
 }
 
 #[test]
-fn test_assert_pass() {
-    test_dir("./tests/assert_pass", test_file_assert_pass);
-}
-
-#[test]
 fn test_syntax() {
     test_dir(
         "./tests/syntax",
@@ -105,18 +100,6 @@ fn test_file_revert_unreachable(test_file: &str) {
     yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
     let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
-    unsat(&query, &test_file);
-}
-
-fn test_file_assert_pass(test_file: &str) {
-    assert!(Path::new(&test_file).exists());
-
-    let content = fs::read_to_string(&test_file).expect("I need to read this file.");
-
-    let mut ast = yul_parser::parse_block(&content);
-    yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
-
-    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
     unsat(&query, &test_file);
 }
 
