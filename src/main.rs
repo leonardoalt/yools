@@ -43,6 +43,16 @@ fn symbolic_subcommand() -> App<'static> {
                 .takes_value(true)
                 .required(true),
         )
+        .arg(
+            Arg::with_name("solver")
+                .short('s')
+                .long("solver")
+                .help("SMT solver")
+                .value_name("SOLVER")
+                .takes_value(true)
+                .default_value("cvc4")
+                .required(false),
+        )
 }
 
 fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
@@ -55,7 +65,10 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
 
     let query = yools::encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
 
-    match solver::query_smt(&query) {
+    match solver::query_smt_with_solver(
+        &query,
+        solver::SolverConfig::new(sub_matches.value_of("solver").unwrap()),
+    ) {
         true => {
             println!("Revert is reachable.");
         }
