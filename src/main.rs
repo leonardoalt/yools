@@ -53,6 +53,16 @@ fn symbolic_subcommand() -> App<'static> {
                 .default_value("cvc4")
                 .required(false),
         )
+        .arg(
+            Arg::with_name("loop-unroll")
+                .short('l')
+                .long("loop-unroll")
+                .help("Loop unrolling limit")
+                .value_name("LOOP_UNROLL")
+                .takes_value(true)
+                .default_value("10")
+                .required(false),
+        )
 }
 
 fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
@@ -63,7 +73,13 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
     let mut ast = yul_parser::parse_block(&content);
     resolve::<EVMDialect>(&mut ast);
 
-    let query = yools::encoder::encode_revert_unreachable::<EVMInstructions, 10>(&ast);
+    let loop_unroll: u64 = sub_matches
+        .value_of("loop-unroll")
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    let query = yools::encoder::encode_revert_unreachable::<EVMInstructions>(&ast, loop_unroll);
 
     match solver::query_smt_with_solver(
         &query,
