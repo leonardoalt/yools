@@ -15,8 +15,6 @@ fn main() {
     let destination = Path::new(&out_dir).join("test_assert_pass.rs");
     let mut test_file = File::create(&destination).unwrap();
 
-    write_header(&mut test_file);
-
     // TODO recursion
     for directory in read_dir("./tests/assert_pass/").unwrap() {
         write_test(&mut test_file, &directory.unwrap());
@@ -44,64 +42,4 @@ fn write_test(test_file: &mut File, file: &DirEntry) {
         )
         .unwrap();
     }
-}
-
-fn write_header(test_file: &mut File) {
-    write!(
-        test_file,
-        "{}",
-        r#"
-use yools::encoder;
-use yools::evm_builtins::EVMInstructions;
-use yools::evm_context;
-use yools::smt::SMTVariable;
-use yools::solver;
-use yools::ssa_tracker::SSATracker;
-
-use yultsur::dialect;
-use yultsur::yul_parser;
-
-#[derive(Default)]
-struct EVMInstructionsWithAssert(EVMInstructions);
-
-impl dialect::Dialect for EVMInstructionsWithAssert {
-    fn builtin(name: &str) -> Option<dialect::Builtin> {
-        match name {
-            "assert" => Some(dialect::Builtin {
-                name: name.to_string(),
-                parameters: 1,
-                returns: 0,
-            }),
-            _ => dialect::EVMDialect::builtin(name),
-        }
-    }
-}
-
-impl encoder::Instructions for EVMInstructionsWithAssert {
-    fn encode_builtin_call(
-        &self,
-        builtin: &dialect::Builtin,
-        arguments: Vec<SMTVariable>,
-        return_vars: &[SMTVariable],
-        ssa: &mut SSATracker,
-    ) -> String {
-        match builtin.name.as_str() {
-            "assert" => format!("(assert (and {} (= #x0000000000000000000000000000000000000000000000000000000000000000 {})))", evm_context::executing_regularly(ssa), arguments[0].name),
-            _ => self
-                .0
-                .encode_builtin_call(builtin, arguments, return_vars, ssa),
-        }
-    }
-}
-fn unsat(query: &String) {
-    assert!(
-        !solver::query_smt(query),
-        "Expected UNSAT. Query:\n{}",
-        query
-    );
-}
-
-"#
-    )
-    .unwrap();
 }
