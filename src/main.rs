@@ -63,7 +63,7 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
     let mut ast = yul_parser::parse_block(&content);
     resolve::<EVMDialect>(&mut ast);
 
-    let query = yools::encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
+    let query = yools::encoder::encode_revert_unreachable::<EVMInstructions, 10>(&ast);
 
     match solver::query_smt_with_solver(
         &query,
