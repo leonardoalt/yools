@@ -60,7 +60,18 @@ impl Instructions for EVMInstructions {
             "and" => direct("bvand"),
             "or" => direct("bvor"),
             "xor" => direct("bvxor"),
-            "byte" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "byte" => {
+                let byte_index = &arguments[0].name;
+                let input = &arguments[1].name;
+                let shift_amount =
+                    format!("(bvsub #x{:064x} (bvmul #x{:064x} {byte_index}))", 248, 8);
+                single_return(format!(
+                    "(ite (bvugt {byte_index} #x{:064x}) #x{:064x} (bvand #x{:064x} (bvlshr {input} {shift_amount})))",
+                    31,
+                    0,
+                    0xff
+                ))
+            }
             "shl" => single_return(format!(
                 "(bvshl {} {})",
                 arguments[1].name, arguments[0].name
