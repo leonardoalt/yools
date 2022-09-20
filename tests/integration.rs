@@ -80,6 +80,17 @@ fn test_syntax_assert_pass_update() {
     );
 }
 
+fn loop_unroll(source: &str) -> Option<u64> {
+    source.split('\n').find_map(|l| {
+        l.starts_with("// loop_unroll:")
+            .then(|| l.split(':').nth(1).unwrap().parse::<u64>().unwrap())
+    })
+}
+
+fn loop_unroll_default(source: &str) -> u64 {
+    loop_unroll(source).unwrap_or(10)
+}
+
 // This function is called from tests constructed at build time
 // and included below.
 // build.rs creates one test per .yul file in the assert_pass directory
@@ -88,7 +99,7 @@ fn test_assert_pass(content: &str, file: &str) {
     let mut ast = yul_parser::parse_block(&content);
     yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
 
-    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
+    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(&content));
     unsat(&query, file);
 }
 
@@ -113,7 +124,8 @@ fn test_file_revert_unreachable(test_file: &str) {
     let mut ast = yul_parser::parse_block(&content);
     yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable::<EVMInstructions>(&ast);
+    let query =
+        encoder::encode_revert_unreachable::<EVMInstructions>(&ast, loop_unroll_default(&content));
     unsat(&query, &test_file);
 }
 
@@ -138,7 +150,8 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
     let mut ast = yul_parser::parse_block(&content);
     yultsur::resolver::resolve::<InstructionsType>(&mut ast);
 
-    let query = encoder::encode_revert_unreachable::<InstructionsType>(&ast);
+    let query =
+        encoder::encode_revert_unreachable::<InstructionsType>(&ast, loop_unroll_default(&content));
 
     let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");
     if query != expected {

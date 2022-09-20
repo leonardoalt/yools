@@ -26,17 +26,18 @@ pub struct Encoder<InstructionsType> {
     ssa_tracker: SSATracker,
     output: String,
     interpreter: InstructionsType,
+    loop_unroll: u64,
 }
 
-pub fn encode<T: Instructions>(ast: &Block) -> String {
+pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
     let mut encoder = Encoder::<T>::default();
-    encoder.encode(ast);
+    encoder.encode(ast, loop_unroll);
     encoder.output
 }
 
-pub fn encode_revert_unreachable<T: Instructions>(ast: &Block) -> String {
+pub fn encode_revert_unreachable<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
     let mut encoder = Encoder::<T>::default();
-    encoder.encode(ast);
+    encoder.encode(ast, loop_unroll);
     encoder.encode_revert_unreachable();
     encoder.output
 }
@@ -66,7 +67,8 @@ impl ASTVisitor for FunctionDefinitionCollector {
 }
 
 impl<InstructionsType: Instructions> Encoder<InstructionsType> {
-    pub fn encode(&mut self, block: &Block) {
+    pub fn encode(&mut self, block: &Block, loop_unroll: u64) {
+        self.loop_unroll = loop_unroll;
         self.encode_context_init();
         self.collect_function_definitions(block);
         self.encode_block(block);
@@ -175,11 +177,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     fn encode_for(&mut self, for_loop: &yul::ForLoop) {
         // TODO this does not support break/continue/leave
 
-        let its = 10;
-
         self.encode_block(&for_loop.pre);
 
-        for _i in 0..its {
+        for _i in 0..self.loop_unroll {
             let cond = self.encode_expression(&for_loop.condition);
             assert!(cond.len() == 1);
             let prev_ssa = self.ssa_tracker.copy_current_ssa();
