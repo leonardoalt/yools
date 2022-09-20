@@ -1,5 +1,5 @@
 use crate::evm_context;
-use crate::smt::*;
+use crate::smt::{self, SMTExpression, SMTFormat, SMTLiteral, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 
 use yultsur::dialect::{Builtin, Dialect};
@@ -164,13 +164,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
         self.encode_block(&expr.body);
 
-        let output = self.ssa_tracker.join_branches(
-            SMTExpression::Eq(
-                Box::new(cond[0].name.clone()),
-                Box::new(SMTLiteral::bv256_zero()),
-            ),
-            prev_ssa,
-        );
+        let output = self
+            .ssa_tracker
+            .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
         self.out(output);
     }
 
@@ -187,13 +183,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             self.encode_block(&for_loop.body);
             self.encode_block(&for_loop.post);
 
-            let output = self.ssa_tracker.join_branches(
-                SMTExpression::Eq(
-                    Box::new(cond[0].name.clone()),
-                    Box::new(SMTLiteral::bv256_zero()),
-                ),
-                prev_ssa,
-            );
+            let output = self
+                .ssa_tracker
+                .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
             self.out(output);
         }
     }

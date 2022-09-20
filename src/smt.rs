@@ -59,6 +59,20 @@ impl SMTLiteral {
 pub enum SMTExpression {
     Eq(BoxedSMTFormat, BoxedSMTFormat),
     Not(BoxedSMTFormat),
+    Literal(SMTLiteral),
+    Variable(SMTIdentifier),
+}
+
+impl From<u64> for SMTExpression {
+    fn from(input: u64) -> SMTExpression {
+        SMTExpression::Literal(SMTLiteral::Hex(format!("{:064x}", input)))
+    }
+}
+
+impl From<SMTVariable> for SMTExpression {
+    fn from(input: SMTVariable) -> SMTExpression {
+        SMTExpression::Variable(SMTIdentifier::Simple(input.name))
+    }
 }
 
 pub enum SMTStatement {
@@ -87,6 +101,16 @@ macro_rules! impl_smt {
     };
 }
 
+macro_rules! impl_smt_expression_constructors {
+    ($($function:ident($($field:ident),*): $variant:ident ),*) => {
+        $(
+        pub fn $function($($field: impl Into<SMTExpression>),*) -> SMTExpression {
+            SMTExpression::$variant($(Box::new($field.into())),*)
+        }
+        )*
+    };
+}
+
 impl_smt!(
     enum SMTIdentifier {
         Simple(symbol) "{}",
@@ -108,8 +132,13 @@ impl_smt!(
     enum SMTExpression {
         Eq(lhs, rhs) "(= {} {})",
         Not(inner) "(not {})",
+        Literal(l) "{}",
+        Variable(v) "{}"
     }
 );
+
+impl_smt_expression_constructors!(eq(lhs, rhs): Eq, not(inner): Not);
+
 impl_smt!(
     enum SMTStatement {
         Assert(inner) "(assert {})",
