@@ -80,6 +80,20 @@ fn test_syntax_assert_pass_update() {
     );
 }
 
+// This function is called from tests constructed at build time
+// and included below.
+// build.rs creates one test per .yul file in the assert_pass directory
+// using the template file test_assert_pass.tmpl
+fn test_assert_pass(content: &str, file: &str) {
+    let mut ast = yul_parser::parse_block(&content);
+    yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
+
+    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
+    unsat(&query, file);
+}
+
+include!(concat!(env!("OUT_DIR"), "/test_assert_pass.rs"));
+
 fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
     let dir = Path::new(test_dir);
     assert!(dir.is_dir());

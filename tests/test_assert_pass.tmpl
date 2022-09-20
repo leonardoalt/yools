@@ -1,9 +1,4 @@
 #[test]
 fn {name}() {{
-    let content = include_str!("{test_file}");
-    let mut ast = yul_parser::parse_block(&content);
-    yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
-
-    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast);
-    unsat(&query);  
+    test_assert_pass(include_str!("{test_file}"), "{test_file}");
 }}
