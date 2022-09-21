@@ -3,6 +3,12 @@ pub struct SMTVariable {
     pub name: String,
 }
 
+impl SMTFormat for SMTVariable {
+    fn as_smt(&self) -> String {
+        self.name.clone()
+    }
+}
+
 pub trait SMTFormat {
     fn as_smt(&self) -> String;
 }
@@ -17,7 +23,7 @@ impl SMTFormat for String {
 
 impl SMTFormat for usize {
     fn as_smt(&self) -> String {
-        self.to_string()
+        format!("#x{:064x}", self)
     }
 }
 
@@ -32,7 +38,6 @@ impl<T: SMTFormat> SMTFormat for Vec<T> {
 
 pub enum SMTIdentifier {
     Simple(String),
-    Indexed(String, Vec<usize>),
 }
 
 pub enum SMTSort {
@@ -42,7 +47,7 @@ pub enum SMTSort {
 
 impl SMTSort {
     pub fn bitvec(index: usize) -> Self {
-        Self::Simple(SMTIdentifier::Indexed("BitVec".to_owned(), vec![index]))
+        Self::Simple(SMTIdentifier::Simple(format!("(_ BitVec {})", index)))
     }
 }
 
@@ -102,10 +107,16 @@ macro_rules! impl_smt {
 }
 
 macro_rules! impl_smt_expression_constructors {
-    ($($function:ident($($field:ident),*): $variant:ident ),*) => {
+    ($($function:ident($($field:ident),*): $smt_name:literal ),*) => {
         $(
-        pub fn $function($($field: impl Into<SMTExpression>),*) -> SMTExpression {
-            SMTExpression::$variant($(Box::new($field.into())),*)
+        pub fn $function($($field: impl SMTFormat),*) -> String {
+            let mut formatted = format!("({}", $smt_name);
+            $(
+                formatted.push(' ');
+                formatted.push_str($field.as_smt().as_str());
+            )*
+            formatted.push(')');
+            formatted
         }
         )*
     };
@@ -114,7 +125,6 @@ macro_rules! impl_smt_expression_constructors {
 impl_smt!(
     enum SMTIdentifier {
         Simple(symbol) "{}",
-        Indexed(symbol, index) "(_ {} {})",
     }
 );
 impl_smt!(
@@ -137,7 +147,11 @@ impl_smt!(
     }
 );
 
-impl_smt_expression_constructors!(eq(lhs, rhs): Eq, not(inner): Not);
+impl_smt_expression_constructors!(
+    eq(lhs, rhs): "=",
+    ite(cond, true_expr, false_expr): "ite",
+    not(inner): "not"
+);
 
 impl_smt!(
     enum SMTStatement {
