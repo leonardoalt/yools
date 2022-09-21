@@ -149,6 +149,7 @@ impl_smt!(
 
 impl_smt_expression_constructors!(
     eq(lhs, rhs): "=",
+    and(first, second): "and",
     ite(cond, true_expr, false_expr): "ite",
     not(inner): "not"
 );

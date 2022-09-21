@@ -87,7 +87,11 @@ impl Instructions for EVMInstructions {
             "addmod" => panic!("Builtin {} not implemented", builtin.name), // TODO // TODO
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "keccak256" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "keccak256" => single_return(evm_context::keccak256(
+                &arguments[0].name,
+                &arguments[1].name,
+                ssa,
+            )),
             "address" => single_return(evm_context::address(ssa)),
             "balance" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "origin" => single_return(evm_context::origin(ssa)),

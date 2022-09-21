@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use crate::smt;
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
 
@@ -38,6 +39,26 @@ pub fn init(ssa: &mut SSATracker) -> String {
         "(declare-fun {} ((_ BitVec 256)) (_ BitVec 8))",
         calldata().name
     );
+
+    let _ = writeln!(
+        output,
+        "(declare-fun {} ((_ BitVec 256)) (_ BitVec 256))",
+        keccak256_32()
+    );
+
+    let _ = writeln!(
+        output,
+        "(declare-fun {} ((_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))",
+        keccak256_64()
+    );
+
+    let _ = writeln!(
+        output,
+        "(declare-fun {} ({} (_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))",
+        keccak256_generic(),
+        memory_type(),
+    );
+
     // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = ssa.to_smt_variable(&static_vars()["address"]).name;
     format!(
@@ -168,6 +189,26 @@ pub fn mload(index: &String, ssa: &mut SSATracker) -> String {
     format!("(concat {})", arguments)
 }
 
+pub fn keccak256(offset: &String, length: &String, ssa: &mut SSATracker) -> String {
+    let offset_0 = mload(offset, ssa);
+    let offset_32 = mload(&format!("(bvadd {} #x{:064X})", offset, 0x20), ssa);
+    smt::ite(
+        &smt::eq(length, &0x20),
+        &format!("({} {})", keccak256_32(), offset_0),
+        &smt::ite(
+            &smt::eq(length, &0x40),
+            &format!("({} {} {})", keccak256_64(), offset_0, offset_32),
+            &format!(
+                "({} {} {} {})",
+                keccak256_generic(),
+                ssa.to_smt_variable(&memory()).name,
+                offset,
+                length
+            ),
+        ),
+    )
+}
+
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
@@ -216,6 +257,18 @@ fn memory() -> Identifier {
 }
 fn memory_type() -> &'static str {
     "(Array (_ BitVec 256) (_ BitVec 8))"
+}
+
+fn keccak256_32() -> String {
+    "_keccak256_32".to_string()
+}
+
+fn keccak256_64() -> String {
+    "_keccak256_64".to_string()
+}
+
+fn keccak256_generic() -> String {
+    "_keccak256".to_string()
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
