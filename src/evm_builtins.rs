@@ -136,6 +136,8 @@ impl Instructions for EVMInstructions {
             "revert" => evm_context::set_reverted(ssa),
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
+
+            "memoryguard" => single_return(arguments[0].name.to_string()),
             _ => panic!("Invalid builtin {}", builtin.name),
         }
     }
