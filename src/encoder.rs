@@ -316,8 +316,10 @@ impl<T> Encoder<T> {
         Box::new(SMTLiteral::Hex(if literal.literal.starts_with("0x") {
             format!("{:0>64}", &literal.literal[2..])
         } else {
-            // TODO support larger decimal constants.
-            format!("{:064X}", &literal.literal.parse::<u128>().unwrap())
+            format!(
+                "{:064X}",
+                literal.literal.parse::<num_bigint::BigUint>().unwrap()
+            )
         }))
     }
 
