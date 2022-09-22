@@ -45,17 +45,20 @@ impl SSATracker {
         ssa_branch
             .iter()
             .flat_map(|(key, value)| {
-                let skipped_idx = self.current[key];
-                if skipped_idx != *value {
-                    let new_ssa = self.allocate_new_ssa_index_by_id(*key);
-                    Some(format!(
-                        "(define-const {} {} (ite {} {} {}))\n",
-                        self.id_to_smt_variable(*key, new_ssa).name,
-                        self.type_of_id(*key),
-                        skip_condition.as_smt(),
-                        self.id_to_smt_variable(*key, skipped_idx).name,
-                        self.id_to_smt_variable(*key, *value).name,
-                    ))
+                if let Some(&skipped_idx) = self.current.get(key) {
+                    if skipped_idx != *value {
+                        let new_ssa = self.allocate_new_ssa_index_by_id(*key);
+                        Some(format!(
+                            "(define-const {} {} (ite {} {} {}))\n",
+                            self.id_to_smt_variable(*key, new_ssa).name,
+                            self.type_of_id(*key),
+                            skip_condition.as_smt(),
+                            self.id_to_smt_variable(*key, skipped_idx).name,
+                            self.id_to_smt_variable(*key, *value).name,
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
