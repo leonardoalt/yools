@@ -59,6 +59,15 @@ pub fn init(ssa: &mut SSATracker) -> String {
         memory_type(),
     );
 
+    let storage_var =
+        ssa.introduce_variable_of_type(&as_declaration(storage()), storage_type().to_string());
+    let _ = writeln!(
+        output,
+        "(declare-fun {} () {})",
+        storage_var.name,
+        storage_type()
+    );
+
     // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = ssa.to_smt_variable(&static_vars()["address"]).name;
     format!(
@@ -209,6 +218,27 @@ pub fn keccak256(offset: &String, length: &String, ssa: &mut SSATracker) -> Stri
     )
 }
 
+pub fn sstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
+    let before = ssa.to_smt_variable(&storage());
+    let after = ssa.allocate_new_ssa_index(&storage());
+
+    let stored = format!("(store {} {} {})", before.name, index, value);
+    format!(
+        "(define-const {} {} {})",
+        after.name,
+        storage_type(),
+        stored
+    )
+}
+
+pub fn sload(index: &String, ssa: &mut SSATracker) -> String {
+    format!(
+        "(select {} {})",
+        ssa.to_smt_variable(&storage()).name,
+        index
+    )
+}
+
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
@@ -269,6 +299,13 @@ fn keccak256_64() -> String {
 
 fn keccak256_generic() -> String {
     "_keccak256".to_string()
+}
+
+fn storage() -> Identifier {
+    identifier("_storage", 1028)
+}
+fn storage_type() -> &'static str {
+    "(Array (_ BitVec 256) (_ BitVec 256))"
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
