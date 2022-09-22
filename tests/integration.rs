@@ -141,9 +141,10 @@ fn test_file_revert_unreachable(test_file: &str) {
         Ok(mut ast) => {
             yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast).expect("Resolving error.");
 
-            let query = encoder::encode_revert_unreachable::<EVMInstructions>(
+            let (query, _) = encoder::encode_revert_unreachable::<EVMInstructions>(
                 &ast,
                 loop_unroll_default(&content),
+                &[],
             );
             unsat(&query, test_file);
         }
@@ -175,9 +176,10 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
         Ok(mut ast) => {
             yultsur::resolver::resolve::<InstructionsType>(&mut ast).expect("Resolving error.");
 
-            let query = encoder::encode_revert_unreachable::<InstructionsType>(
+            let (query, _) = encoder::encode_revert_unreachable::<InstructionsType>(
                 &ast,
                 loop_unroll_default(&content),
+                &[],
             );
 
             let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");

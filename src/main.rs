@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use yools::evm_builtins::EVMInstructions;
 use yools::solver;
 
-use yultsur::dialect::EVMDialect;
 use yultsur::resolver::resolve;
 use yultsur::yul_parser;
+use yultsur::{dialect::EVMDialect, resolver::resolve_inside};
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
@@ -44,6 +44,15 @@ fn symbolic_subcommand() -> App<'static> {
                 .required(true),
         )
         .arg(
+            Arg::with_name("eval")
+                .short('e')
+                .long("eval")
+                .help("Yul expression(s) to evaluate in the reverting execution. Separate multiple expressions by '|'.")
+                .value_name("expression")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("solver")
                 .short('s')
                 .long("solver")
@@ -79,19 +88,47 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
         .parse()
         .unwrap();
 
-    let query = yools::encoder::encode_revert_unreachable::<EVMInstructions>(&ast, loop_unroll);
+    let eval_strings = if let Some(eval) = sub_matches.value_of("eval") {
+        eval.split('|')
+            .map(|e| e.to_string())
+            .collect::<Vec<String>>()
+    } else {
+        vec![]
+    };
 
-    match solver::query_smt_with_solver(
-        &query,
-        solver::SolverConfig::new(sub_matches.value_of("solver").unwrap()),
-    ) {
+    let counterexamples = eval_strings
+        .iter()
+        .map(|eval| {
+            let mut expr = yul_parser::parse_expression(eval)?;
+            resolve_inside::<EVMDialect>(&mut expr, &ast)?;
+            Ok(expr)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let (query, counterexamples_encoded) = yools::encoder::encode_revert_unreachable::<
+        EVMInstructions,
+    >(&ast, loop_unroll, &counterexamples);
+
+    let solver = solver::SolverConfig::new(sub_matches.value_of("solver").unwrap());
+    let (result, values) =
+        solver::query_smt_with_solver_and_eval(&query, &counterexamples_encoded, solver);
+    match result {
         true => {
             println!("Revert is reachable.");
+            if !eval_strings.is_empty() {
+                println!(
+                    "Evaluated expressions:\n{}",
+                    eval_strings
+                        .iter()
+                        .zip(values.iter())
+                        .map(|(s, v)| { format!("{} = {}", s, v) })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
         }
         false => {
             println!("All reverts are unreachable.");
         }
-    };
-
+    }
     Ok(())
 }
