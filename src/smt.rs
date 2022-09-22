@@ -109,7 +109,7 @@ macro_rules! impl_smt {
 macro_rules! impl_smt_expression_constructors {
     ($($function:ident($($field:ident),*): $smt_name:literal ),*) => {
         $(
-        pub fn $function($($field: impl SMTFormat),*) -> String {
+        pub fn $function($($field: &impl SMTFormat),*) -> String {
             let mut formatted = format!("({}", $smt_name);
             $(
                 formatted.push(' ');
