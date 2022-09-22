@@ -213,6 +213,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 .join_branches(skip_condition, post_switch_ssa);
             self.out(output);
             post_switch_ssa = self.ssa_tracker.take_current_ssa();
+            post_switch_ssa.retain(|key, _| pre_switch_ssa.contains_key(key));
         }
 
         self.ssa_tracker.set_current_ssa(post_switch_ssa);
