@@ -166,7 +166,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
         let output = self
             .ssa_tracker
-            .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+            .join_branches(smt::eq(&cond[0], &0), prev_ssa);
         self.out(output);
     }
 
@@ -185,7 +185,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
             let output = self
                 .ssa_tracker
-                .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+                .join_branches(smt::eq(&cond[0], &0), prev_ssa);
             self.out(output);
         }
     }
