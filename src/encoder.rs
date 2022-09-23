@@ -16,6 +16,7 @@ pub trait Instructions: Default + Dialect {
         arguments: Vec<SMTVariable>,
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
+        path_conditions: &[SMTExpr],
     ) -> SMTStatement;
 }
 
@@ -27,6 +28,7 @@ pub struct Encoder<InstructionsType> {
     output: Vec<SMTStatement>,
     interpreter: InstructionsType,
     loop_unroll: u64,
+    path_conditions: Vec<SMTExpr>,
 }
 
 pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
@@ -171,11 +173,13 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         assert!(cond.len() == 1);
         let prev_ssa = self.ssa_tracker.copy_current_ssa();
 
+        self.push_path_condition(smt::neq(cond[0].clone(), 0));
         self.encode_block(&expr.body);
+        self.pop_path_condition();
 
         let output = self
             .ssa_tracker
-            .join_branches(smt::eq(cond[0].clone(), 0u64), prev_ssa);
+            .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
         self.out_vec(output);
     }
 
@@ -189,8 +193,10 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             assert!(cond.len() == 1);
             let prev_ssa = self.ssa_tracker.copy_current_ssa();
 
+            self.push_path_condition(smt::neq(cond[0].clone(), 0));
             self.encode_block(&for_loop.body);
             self.encode_block(&for_loop.post);
+            self.pop_path_condition();
 
             let output = self
                 .ssa_tracker
@@ -215,8 +221,6 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
             self.ssa_tracker.set_current_ssa(pre_switch_ssa.clone());
 
-            self.encode_block(body);
-
             let skip_condition = if is_default {
                 smt::or_vec(
                     switch
@@ -237,6 +241,11 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     self.encode_literal_value(literal.as_ref().unwrap()),
                 )
             };
+
+            self.push_path_condition(smt::not(skip_condition.clone()));
+            self.encode_block(body);
+            self.pop_path_condition();
+
             let output = self
                 .ssa_tracker
                 .join_branches(skip_condition, post_switch_ssa);
@@ -295,6 +304,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     arguments,
                     &return_vars,
                     &mut self.ssa_tracker,
+                    &self.path_conditions,
                 );
                 self.out(result);
                 return_vars
@@ -335,13 +345,24 @@ impl<T> Encoder<T> {
 
     fn encode_literal_value(&self, literal: &Literal) -> SMTExpr {
         if literal.literal.starts_with("0x") {
-            smt::literal(format!("{:0>64}", &literal.literal[2..]))
+            smt::literal(format!("{:0>64}", &literal.literal[2..]), SMTSort::BV(256))
         } else {
-            smt::literal(format!(
-                "{:064X}",
-                literal.literal.parse::<num_bigint::BigUint>().unwrap()
-            ))
+            smt::literal(
+                format!(
+                    "{:064X}",
+                    literal.literal.parse::<num_bigint::BigUint>().unwrap()
+                ),
+                SMTSort::BV(256),
+            )
         }
+    }
+
+    fn push_path_condition(&mut self, cond: SMTExpr) {
+        self.path_conditions.push(cond);
+    }
+
+    fn pop_path_condition(&mut self) {
+        self.path_conditions.pop().unwrap();
     }
 
     fn new_temporary_variable(&mut self, sort: SMTSort) -> SMTVariable {
