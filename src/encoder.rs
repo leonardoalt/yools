@@ -204,17 +204,37 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             location: _,
         } in &switch.cases
         {
-            // TODO default case is not yet implemented because
-            // the ITE expression is complicated.
-            assert!(literal.is_some());
+            let is_default = literal.is_none();
+
             self.ssa_tracker.set_current_ssa(pre_switch_ssa.clone());
 
             self.encode_block(body);
 
-            let skip_condition = SMTExpression::Not(Box::new(SMTExpression::Eq(
-                Box::new(discriminator[0].name.clone()),
-                self.encode_literal_value(literal.as_ref().unwrap()),
-            )));
+            let skip_condition = if is_default {
+                format!(
+                    "(or {})",
+                    switch
+                        .cases
+                        .iter()
+                        .filter(|case| case.literal.is_some())
+                        .map(|case| {
+                            smt::eq(
+                                &discriminator[0],
+                                &self
+                                    .encode_literal_value(case.literal.as_ref().unwrap())
+                                    .as_smt(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            } else {
+                SMTExpression::Not(Box::new(SMTExpression::Eq(
+                    Box::new(discriminator[0].name.clone()),
+                    self.encode_literal_value(literal.as_ref().unwrap()),
+                )))
+                .as_smt()
+            };
             let output = self
                 .ssa_tracker
                 .join_branches(skip_condition, post_switch_ssa);
