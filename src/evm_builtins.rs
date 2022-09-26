@@ -121,22 +121,26 @@ impl Instructions for EVMInstructions {
             "mload" => single_return(evm_context::mload(&arguments[0].name, ssa)),
             "mstore" => evm_context::mstore(&arguments[0].name, &arguments[1].name, ssa),
             "mstore8" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "sload" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-            "sstore" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "msize" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-            "gas" => panic!("Builtin {} not implemented", builtin.name),     // TODO
-            "log0" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-            "log1" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-            "log2" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-            "log3" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-            "log4" => panic!("Builtin {} not implemented", builtin.name),    // TODO
-            "create" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "call" => panic!("Builtin {} not implemented", builtin.name),    // TODO
+            "sload" => single_return(evm_context::sload(&arguments[0].name, ssa)),
+            "sstore" => evm_context::sstore(&arguments[0].name, &arguments[1].name, ssa),
+            "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "gas" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+            "log0" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "log1" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "log2" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "log3" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "log4" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "create" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "call" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "return" => evm_context::set_stopped(ssa), // TODO store returndata
+            "return" => evm_context::set_stopped(ssa),                     // TODO store returndata
             "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "create2" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "create2" =>
+            /* TODO handle potential storage changes */
+            {
+                panic!("Builtin {} not implemented", builtin.name)
+            } // TODO
             "revert" => evm_context::set_reverted(ssa),
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
