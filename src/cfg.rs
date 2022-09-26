@@ -83,6 +83,7 @@ impl CFGBuilder {
             self.current.clone(),
             yul::Block {
                 statements: std::mem::take(&mut self.statement_acc),
+                location: None,
             },
         );
         // TODO assert that the insertion happened
@@ -313,7 +314,7 @@ mod tests {
 
     #[test]
     fn yul_block() {
-        let block = yul_parser::parse_block("{ let a := 2 }");
+        let block = yul_parser::parse_block("{ let a := 2 }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -322,7 +323,7 @@ mod tests {
 
     #[test]
     fn yul_if_basic() {
-        let block = yul_parser::parse_block("{ if 1 { } }");
+        let block = yul_parser::parse_block("{ if 1 { } }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -331,7 +332,7 @@ mod tests {
 
     #[test]
     fn yul_if() {
-        let block = yul_parser::parse_block("{ let a := 2 if a { a := 0 } let b := 666 }");
+        let block = yul_parser::parse_block("{ let a := 2 if a { a := 0 } let b := 666 }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -341,7 +342,7 @@ mod tests {
     // TODO `switch` is actually buggy in the parser
     #[test]
     fn yul_switch_basic() {
-        let block = yul_parser::parse_block("{ switch 3 case 0 { } default { } }");
+        let block = yul_parser::parse_block("{ switch 3 case 0 { } default { } }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -350,7 +351,7 @@ mod tests {
 
     #[test]
     fn yul_for_basic() {
-        let block = yul_parser::parse_block("{ for {} 1 {} {} }");
+        let block = yul_parser::parse_block("{ for {} 1 {} {} }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -360,7 +361,8 @@ mod tests {
     #[test]
     fn yul_for() {
         let block =
-            yul_parser::parse_block("{ let a := 2 for { a := 3 } a { a := 4 } { a := 5 } a := 6}");
+            yul_parser::parse_block("{ let a := 2 for { a := 3 } a { a := 4 } { a := 5 } a := 6}")
+                .unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -369,7 +371,7 @@ mod tests {
 
     #[test]
     fn yul_for_break_basic() {
-        let block = yul_parser::parse_block("{ for {} 1 { break } {} }");
+        let block = yul_parser::parse_block("{ for {} 1 { break } {} }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -378,7 +380,7 @@ mod tests {
 
     #[test]
     fn yul_for_continue_basic() {
-        let block = yul_parser::parse_block("{ for {} 1 { continue } {} }");
+        let block = yul_parser::parse_block("{ for {} 1 { continue } {} }").unwrap();
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
@@ -390,8 +392,13 @@ mod tests {
         let if_st = yul::If {
             condition: yul::Expression::Literal(yul::Literal {
                 literal: "cond".to_string(),
+                location: None,
             }),
-            body: yul::Block { statements: vec![] },
+            body: yul::Block {
+                statements: vec![],
+                location: None,
+            },
+            location: None,
         };
 
         let cfg = CFGBuilder::build(yul::Statement::If(if_st));

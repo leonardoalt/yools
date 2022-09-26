@@ -222,6 +222,7 @@ fn identifier(name: &str, id: u64) -> Identifier {
     Identifier {
         id: IdentifierID::Reference(id),
         name: name.to_string(),
+        location: None,
     }
 }
 
@@ -230,6 +231,7 @@ fn as_declaration(identifier: Identifier) -> Identifier {
         Identifier {
             id: IdentifierID::Declaration(id),
             name: identifier.name,
+            location: None,
         }
     } else {
         panic!()

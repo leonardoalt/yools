@@ -96,11 +96,18 @@ fn loop_unroll_default(source: &str) -> u64 {
 // build.rs creates one test per .yul file in the assert_pass directory
 // using the template file test_assert_pass.tmpl
 fn test_assert_pass(content: &str, file: &str) {
-    let mut ast = yul_parser::parse_block(&content);
-    yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
+    match yul_parser::parse_block(&content) {
+        Err(err) => {
+            assert!(false, "Parse error in file {file}:\n{err}")
+        }
+        Ok(mut ast) => {
+            yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
 
-    let query = encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(&content));
-    unsat(&query, file);
+            let query =
+                encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(&content));
+            unsat(&query, file);
+        }
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/test_assert_pass.rs"));
@@ -121,12 +128,20 @@ fn test_file_revert_unreachable(test_file: &str) {
 
     let content = fs::read_to_string(&test_file).expect("I need to read this file.");
 
-    let mut ast = yul_parser::parse_block(&content);
-    yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
+    match yul_parser::parse_block(&content) {
+        Err(err) => {
+            assert!(false, "Parse error in file {test_file}:\n{err}")
+        }
+        Ok(mut ast) => {
+            yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
 
-    let query =
-        encoder::encode_revert_unreachable::<EVMInstructions>(&ast, loop_unroll_default(&content));
-    unsat(&query, &test_file);
+            let query = encoder::encode_revert_unreachable::<EVMInstructions>(
+                &ast,
+                loop_unroll_default(&content),
+            );
+            unsat(&query, &test_file);
+        }
+    }
 }
 
 fn test_file_syntax_no_update<T: Instructions>(test_file: &str) {
@@ -147,18 +162,26 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
 
     let content = fs::read_to_string(&test_file).expect("I need to read this file.");
 
-    let mut ast = yul_parser::parse_block(&content);
-    yultsur::resolver::resolve::<InstructionsType>(&mut ast);
+    match yul_parser::parse_block(&content) {
+        Err(err) => {
+            assert!(false, "Parse error in file {test_file}:\n{err}")
+        }
+        Ok(mut ast) => {
+            yultsur::resolver::resolve::<InstructionsType>(&mut ast);
 
-    let query =
-        encoder::encode_revert_unreachable::<InstructionsType>(&ast, loop_unroll_default(&content));
+            let query = encoder::encode_revert_unreachable::<InstructionsType>(
+                &ast,
+                loop_unroll_default(&content),
+            );
 
-    let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");
-    if query != expected {
-        if update {
-            assert!(fs::write(expect_name, query).is_ok());
-        } else {
-            panic!("Expected:\n{}\nGot:\n{}", expected, query);
+            let expected = fs::read_to_string(&expect_name).expect("I need to read this file.");
+            if query != expected {
+                if update {
+                    assert!(fs::write(expect_name, query).is_ok());
+                } else {
+                    panic!("Expected:\n{}\nGot:\n{}", expected, query);
+                }
+            }
         }
     }
 }
