@@ -71,7 +71,7 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
     let content = std::fs::read_to_string(yul_file).unwrap();
 
     let mut ast = yul_parser::parse_block(&content)?;
-    resolve::<EVMDialect>(&mut ast);
+    resolve::<EVMDialect>(&mut ast)?;
 
     let loop_unroll: u64 = sub_matches
         .value_of("loop-unroll")

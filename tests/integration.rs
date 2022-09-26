@@ -101,7 +101,8 @@ fn test_assert_pass(content: &str, file: &str) {
             assert!(false, "Parse error in file {file}:\n{err}")
         }
         Ok(mut ast) => {
-            yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast);
+            yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast)
+                .expect("Resolving error.");
 
             let query =
                 encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(&content));
@@ -133,7 +134,7 @@ fn test_file_revert_unreachable(test_file: &str) {
             assert!(false, "Parse error in file {test_file}:\n{err}")
         }
         Ok(mut ast) => {
-            yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast);
+            yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast).expect("Resolving error.");
 
             let query = encoder::encode_revert_unreachable::<EVMInstructions>(
                 &ast,
@@ -167,7 +168,7 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
             assert!(false, "Parse error in file {test_file}:\n{err}")
         }
         Ok(mut ast) => {
-            yultsur::resolver::resolve::<InstructionsType>(&mut ast);
+            yultsur::resolver::resolve::<InstructionsType>(&mut ast).expect("Resolving error.");
 
             let query = encoder::encode_revert_unreachable::<InstructionsType>(
                 &ast,
