@@ -16,6 +16,9 @@
 (declare-const _timestamp_2056_0 (_ BitVec 256))
 (declare-const _memory_1027_0 (Array (_ BitVec 256) (_ BitVec 8)))
 (declare-fun _calldata ((_ BitVec 256)) (_ BitVec 8))
+(declare-fun _keccak256_32 ((_ BitVec 256)) (_ BitVec 256))
+(declare-fun _keccak256_64 ((_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))
+(declare-fun _keccak256 ((Array (_ BitVec 256) (_ BitVec 8)) (_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))
 (assert (= ((_ extract 255 160) _address_2048_0) #x000000000000000000000000))
 
 (define-const _1 (_ BitVec 256) #xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
