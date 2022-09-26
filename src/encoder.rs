@@ -100,6 +100,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         self.encode_variable_declaration(&VariableDeclaration {
             variables: function.returns.clone(),
             value: None,
+            location: None,
         });
         self.encode_block(&function.body);
         let returns = self.ssa_tracker.to_smt_variables(&function.returns);
@@ -115,6 +116,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             None => {
                 let zero = self.encode_literal(&Literal {
                     literal: String::from("0"),
+                    location: None,
                 });
                 vec![zero; var.variables.len()]
             }
@@ -196,7 +198,12 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         let pre_switch_ssa = self.ssa_tracker.copy_current_ssa();
         let mut post_switch_ssa = self.ssa_tracker.take_current_ssa();
 
-        for Case { literal, body } in &switch.cases {
+        for Case {
+            literal,
+            body,
+            location: _,
+        } in &switch.cases
+        {
             // TODO default case is not yet implemented because
             // the ITE expression is complicated.
             assert!(literal.is_some());
