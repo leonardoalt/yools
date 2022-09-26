@@ -96,7 +96,7 @@ fn loop_unroll_default(source: &str) -> u64 {
 // build.rs creates one test per .yul file in the assert_pass directory
 // using the template file test_assert_pass.tmpl
 fn test_assert_pass(content: &str, file: &str) {
-    match yul_parser::parse_block(&content) {
+    match yul_parser::parse_block(content) {
         Err(err) => {
             assert!(false, "Parse error in file {file}:\n{err}")
         }
@@ -105,7 +105,7 @@ fn test_assert_pass(content: &str, file: &str) {
                 .expect("Resolving error.");
 
             let query =
-                encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(&content));
+                encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(content));
             unsat(&query, file);
         }
     }
@@ -140,7 +140,7 @@ fn test_file_revert_unreachable(test_file: &str) {
                 &ast,
                 loop_unroll_default(&content),
             );
-            unsat(&query, &test_file);
+            unsat(&query, test_file);
         }
     }
 }
