@@ -133,7 +133,7 @@ impl Instructions for EVMInstructions {
             "create" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "call" => panic!("Builtin {} not implemented", builtin.name),    // TODO
             "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "return" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "return" => evm_context::set_stopped(ssa), // TODO store returndata
             "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "create2" => panic!("Builtin {} not implemented", builtin.name), // TODO
