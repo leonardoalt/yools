@@ -109,7 +109,7 @@ impl Instructions for EVMInstructions {
             "difficulty" => single_return(evm_context::difficulty(ssa).into()),
             "gaslimit" => single_return(evm_context::gaslimit(ssa).into()),
             "chainid" => single_return(evm_context::chainid(ssa).into()),
-            "selfbalance" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "selfbalance" => single_return(evm_context::selfbalance(ssa).into()),
             "basefee" => single_return(evm_context::basefee(ssa).into()),
             "pop" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "mload" => single_return(evm_context::mload(arg_0.unwrap().into(), ssa)),
@@ -136,17 +136,84 @@ impl Instructions for EVMInstructions {
             "log2" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "log3" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "log4" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "create" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "call" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "return" => vec![evm_context::set_stopped(ssa)],               // TODO store returndata
-            "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "create2" =>
-            /* TODO handle potential storage changes */
-            {
-                panic!("Builtin {} not implemented", builtin.name)
-            } // TODO
+            "create" => evm_context::create(
+                arg_0.unwrap().into(),
+                &MemoryRange {
+                    offset: arg_1.unwrap().into(),
+                    length: arguments[2].clone().into(),
+                },
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "call" => evm_context::call(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                arguments[2].clone().into(),
+                &MemoryRange {
+                    offset: arguments[3].clone().into(),
+                    length: arguments[4].clone().into(),
+                },
+                &MemoryRange {
+                    offset: arguments[5].clone().into(),
+                    length: arguments[6].clone().into(),
+                },
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "callcode" => evm_context::callcode(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                arguments[2].clone().into(),
+                &MemoryRange {
+                    offset: arguments[3].clone().into(),
+                    length: arguments[4].clone().into(),
+                },
+                &MemoryRange {
+                    offset: arguments[5].clone().into(),
+                    length: arguments[6].clone().into(),
+                },
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "return" => vec![evm_context::set_stopped(ssa)], // TODO store returndata
+            "delegatecall" => evm_context::delegatecall(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                &MemoryRange {
+                    offset: arguments[2].clone().into(),
+                    length: arguments[3].clone().into(),
+                },
+                &MemoryRange {
+                    offset: arguments[4].clone().into(),
+                    length: arguments[5].clone().into(),
+                },
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "staticcall" => evm_context::staticcall(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                &MemoryRange {
+                    offset: arguments[2].clone().into(),
+                    length: arguments[3].clone().into(),
+                },
+                &MemoryRange {
+                    offset: arguments[4].clone().into(),
+                    length: arguments[5].clone().into(),
+                },
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "create2" => evm_context::create2(
+                arg_0.unwrap().into(),
+                &MemoryRange {
+                    offset: arg_1.unwrap().into(),
+                    length: arguments[2].clone().into(),
+                },
+                arguments[3].clone().into(),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
             "revert" => vec![evm_context::set_reverted(ssa)],
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
