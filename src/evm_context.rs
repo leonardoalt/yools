@@ -1,85 +1,133 @@
-use std::collections::BTreeMap;
-use std::fmt::Write;
-
 use crate::smt;
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
 
 pub fn init(ssa: &mut SSATracker) -> String {
-    let mut output = [revert_flag(), stop_flag()].into_iter().map(|identifier| {
-        let var = ssa.introduce_variable(&as_declaration(identifier));
-        format!(
-            "(define-const {} (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)\n",
-            var.name
-        )
-    }).collect::<Vec<_>>().join("");
-    output.push_str(
-        static_vars()
-            .into_iter()
-            .map(|(_name, identifier)| {
-                let var = ssa.introduce_variable(&as_declaration(identifier));
-                format!("(declare-const {} (_ BitVec 256))\n", var.name)
-            })
-            .collect::<Vec<_>>()
-            .join("")
-            .as_str(),
-    );
-    let memory_var =
-        ssa.introduce_variable_of_type(&as_declaration(memory()), memory_type().to_string());
+    let output = ContextVariables::all()
+        .iter()
+        .map(|var| {
+            let smt_var = ssa.introduce_variable_of_type(
+                &as_declaration(var.identifier.clone()),
+                var.type_.clone(),
+            );
+            if let Some(default) = &var.default_value {
+                format!(
+                    "(define-fun {} {} {})\n",
+                    smt_var.name, var.full_type, default
+                )
+            } else {
+                format!("(declare-fun {} {})\n", smt_var.name, var.full_type)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("");
     // TODO memory is zero initially.
-    let _ = writeln!(
-        output,
-        "(declare-const {} {})",
-        memory_var.name,
-        memory_type()
-    );
-
-    let _ = writeln!(
-        output,
-        "(declare-fun {} ((_ BitVec 256)) (_ BitVec 8))",
-        calldata().name
-    );
-
-    let _ = writeln!(
-        output,
-        "(declare-fun {} ((_ BitVec 256)) (_ BitVec 256))",
-        keccak256_32()
-    );
-
-    let _ = writeln!(
-        output,
-        "(declare-fun {} ((_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))",
-        keccak256_64()
-    );
-
-    let _ = writeln!(
-        output,
-        "(declare-fun {} ({} (_ BitVec 256) (_ BitVec 256)) (_ BitVec 256))",
-        keccak256_generic(),
-        memory_type(),
-    );
-
-    let storage_var =
-        ssa.introduce_variable_of_type(&as_declaration(storage()), storage_type().to_string());
-    let _ = writeln!(
-        output,
-        "(declare-fun {} () {})",
-        storage_var.name,
-        storage_type()
-    );
 
     // TODO assert that calldata[i] = 0 for i >= calldatasize
-    let address = ssa.to_smt_variable(&static_vars()["address"]).name;
+    let address = context().address.smt_var(ssa);
     format!(
         "{}(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))\n",
         output,
     )
 }
 
+struct ContextVariable {
+    identifier: Identifier,
+    /// The full type "(input) (output)"
+    full_type: String,
+    /// Only the output type.
+    type_: String,
+    default_value: Option<String>,
+}
+
+impl ContextVariable {
+    pub fn smt_var(&self, ssa: &mut SSATracker) -> String {
+        ssa.to_smt_variable(&self.identifier).name
+    }
+}
+
+macro_rules! context_variables {
+    ($($var:ident: $type:expr; $default_value:expr),*) => {
+        // Declare the struct.
+        struct ContextVariables {
+            $($var: ContextVariable),*
+        }
+        // Define the default value.
+        impl Default for ContextVariables {
+            fn default() -> ContextVariables {
+                let mut i: u64 = 2047;
+                let mut id = || { i += 1; i };
+                ContextVariables {
+                    $($var: ContextVariable{
+                        identifier: identifier(&format!("_{}", stringify!($var)), id()),
+                        full_type: match $type {
+                            Type::Default => "() (_ BitVec 256)".to_string(),
+                            Type::Constant(t) => format!("() {t}"),
+                            Type::Function(in_, out) => format!("{in_} {out}"),
+                        },
+                        type_: match $type {
+                            Type::Default => "(_ BitVec 256)",
+                            Type::Constant(t) => t,
+                            Type::Function(_, out) => out,
+                        }.to_string(),
+                        default_value: $default_value,
+                    }),*
+                }
+            }
+        }
+        // Return an iterator through the variables.
+        impl ContextVariables {
+            fn all() -> Vec<ContextVariable> {
+                vec![
+                    $(
+                        ContextVariables::default().$var
+                    ),*
+                ]
+            }
+        }
+    };
+}
+
+enum Type {
+    Default,
+    Constant(&'static str),
+    Function(&'static str, &'static str),
+}
+
+context_variables! {
+    address: Type::Default; None,
+    basefee: Type::Default; None,
+    calldatasize: Type::Default; None,
+    caller: Type::Default; None,
+    callvalue: Type::Default; None,
+    chainid: Type::Default; None,
+    codesize: Type::Default; None,
+    coinbase: Type::Default; None,
+    difficulty: Type::Default; None,
+    gaslimit: Type::Default; None,
+    gasprice: Type::Default; None,
+    number: Type::Default; None,
+    origin: Type::Default; None,
+    timestamp: Type::Default; None,
+    memory: Type::Constant("(Array (_ BitVec 256) (_ BitVec 8))"); None,
+    storage: Type::Constant("(Array (_ BitVec 256) (_ BitVec 256))"); None,
+    calldata: Type::Function("((_ BitVec 256))", "(_ BitVec 8)"); None,
+    keccak256_32: Type::Function("((_ BitVec 256))", "(_ BitVec 256)"); None,
+    keccak256_64: Type::Function("((_ BitVec 256) (_ BitVec 256))", "(_ BitVec 256)"); None,
+    keccak256: Type::Function("((Array (_ BitVec 256) (_ BitVec 8)) (_ BitVec 256) (_ BitVec 256))", "(_ BitVec 256)"); None,
+    revert_flag: Type::Default; Some("#x0000000000000000000000000000000000000000000000000000000000000000".to_string()),
+    stop_flag: Type::Default; Some("#x0000000000000000000000000000000000000000000000000000000000000000".to_string())
+}
+
+// TODO can we make this a global variable?
+fn context() -> ContextVariables {
+    ContextVariables::default()
+}
+
 pub fn set_reverted(ssa: &mut SSATracker) -> String {
     assign_variable_if_executing_regularly(
         ssa,
-        &revert_flag(),
+        &context().revert_flag.identifier,
         "#x0000000000000000000000000000000000000000000000000000000000000001",
     )
 }
@@ -87,95 +135,68 @@ pub fn set_reverted(ssa: &mut SSATracker) -> String {
 pub fn set_stopped(ssa: &mut SSATracker) -> String {
     assign_variable_if_executing_regularly(
         ssa,
-        &stop_flag(),
+        &context().stop_flag.identifier,
         "#x0000000000000000000000000000000000000000000000000000000000000001",
     )
 }
 
-fn static_vars() -> BTreeMap<String, Identifier> {
-    [
-        "address",
-        "origin",
-        "caller",
-        "callvalue",
-        "calldatasize",
-        "codesize",
-        "gasprice",
-        "coinbase",
-        "timestamp",
-        "number",
-        "difficulty",
-        "gaslimit",
-        "chainid",
-        "basefee",
-    ]
-    .iter()
-    .enumerate()
-    .map(|(i, name)| {
-        (
-            name.to_string(),
-            identifier(format!("_{name}").as_str(), 2048 + i as u64),
-        )
-    })
-    .collect()
-}
-
 pub fn address(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["address"]).name
+    context().address.smt_var(ssa)
 }
 pub fn origin(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["origin"]).name
+    context().origin.smt_var(ssa)
 }
 pub fn caller(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["caller"]).name
+    context().caller.smt_var(ssa)
 }
 pub fn callvalue(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["callvalue"]).name
+    context().callvalue.smt_var(ssa)
 }
 pub fn calldatasize(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["calldatasize"]).name
+    context().calldatasize.smt_var(ssa)
 }
 pub fn codesize(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["codesize"]).name
+    context().codesize.smt_var(ssa)
 }
 pub fn gasprice(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["gasprice"]).name
+    context().gasprice.smt_var(ssa)
 }
 pub fn coinbase(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["coinbase"]).name
+    context().coinbase.smt_var(ssa)
 }
 pub fn timestamp(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["timestamp"]).name
+    context().timestamp.smt_var(ssa)
 }
 pub fn number(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["number"]).name
+    context().number.smt_var(ssa)
 }
 pub fn difficulty(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["difficulty"]).name
+    context().difficulty.smt_var(ssa)
 }
 pub fn gaslimit(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["gaslimit"]).name
+    context().gaslimit.smt_var(ssa)
 }
 pub fn chainid(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["chainid"]).name
+    context().chainid.smt_var(ssa)
 }
 pub fn basefee(ssa: &mut SSATracker) -> String {
-    ssa.to_smt_variable(&static_vars()["basefee"]).name
+    context().basefee.smt_var(ssa)
 }
 
-pub fn calldataload(index: &String, _ssa: &mut SSATracker) -> String {
+pub fn calldataload(index: &String, ssa: &mut SSATracker) -> String {
+    let calldata = context().calldata.smt_var(ssa);
     let arguments = (0..32)
-        .map(|i| format!("({} (bvadd {} #x{:064X}))", calldata().name, index, i))
+        .map(|i| format!("({} (bvadd {} #x{:064X}))", calldata, index, i))
         .collect::<Vec<_>>()
         .join(" ");
     format!("(concat {})", arguments)
 }
 
 pub fn mstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
-    let before = ssa.to_smt_variable(&memory());
-    let after = ssa.allocate_new_ssa_index(&memory());
+    let before = context().memory.smt_var(ssa);
+    let after = ssa.allocate_new_ssa_index(&context().memory.identifier);
 
-    let stored = (0..32).fold(before.name, |acc, i| {
+    let stored = (0..32).fold(before, |acc, i| {
         let sub_index = format!("(bvadd {} #x{:064X})", index, i);
         let byte_value = format!(
             "((_ extract {} {}) {})",
@@ -185,14 +206,19 @@ pub fn mstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
         );
         format!("(store {} {} {})", acc, sub_index, byte_value,)
     });
-    format!("(define-const {} {} {})", after.name, memory_type(), stored)
+    format!(
+        "(define-const {} {} {})",
+        after.name,
+        context().memory.type_,
+        stored
+    )
 }
 
 pub fn mload(index: &String, ssa: &mut SSATracker) -> String {
-    let mem = ssa.to_smt_variable(&memory());
+    let mem = context().memory.smt_var(ssa);
 
     let arguments = (0..32)
-        .map(|i| format!("(select {} (bvadd {} #x{:064X}))", mem.name, index, i))
+        .map(|i| format!("(select {} (bvadd {} #x{:064X}))", mem, index, i))
         .collect::<Vec<_>>()
         .join(" ");
     format!("(concat {})", arguments)
@@ -203,14 +229,19 @@ pub fn keccak256(offset: &String, length: &String, ssa: &mut SSATracker) -> Stri
     let offset_32 = mload(&format!("(bvadd {} #x{:064X})", offset, 0x20), ssa);
     smt::ite(
         &smt::eq(length, &0x20),
-        &format!("({} {})", keccak256_32(), offset_0),
+        &format!("({} {})", context().keccak256_32.smt_var(ssa), offset_0),
         &smt::ite(
             &smt::eq(length, &0x40),
-            &format!("({} {} {})", keccak256_64(), offset_0, offset_32),
+            &format!(
+                "({} {} {})",
+                context().keccak256_64.smt_var(ssa),
+                offset_0,
+                offset_32
+            ),
             &format!(
                 "({} {} {} {})",
-                keccak256_generic(),
-                ssa.to_smt_variable(&memory()).name,
+                context().keccak256.smt_var(ssa),
+                context().memory.smt_var(ssa),
                 offset,
                 length
             ),
@@ -219,30 +250,26 @@ pub fn keccak256(offset: &String, length: &String, ssa: &mut SSATracker) -> Stri
 }
 
 pub fn sstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
-    let before = ssa.to_smt_variable(&storage());
-    let after = ssa.allocate_new_ssa_index(&storage());
+    let before = context().storage.smt_var(ssa);
+    let after = ssa.allocate_new_ssa_index(&context().storage.identifier);
 
-    let stored = format!("(store {} {} {})", before.name, index, value);
+    let stored = format!("(store {} {} {})", before, index, value);
     format!(
         "(define-const {} {} {})",
         after.name,
-        storage_type(),
+        context().storage.type_,
         stored
     )
 }
 
 pub fn sload(index: &String, ssa: &mut SSATracker) -> String {
-    format!(
-        "(select {} {})",
-        ssa.to_smt_variable(&storage()).name,
-        index
-    )
+    format!("(select {} {})", context().storage.smt_var(ssa), index)
 }
 
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
     format!(
         "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
-        ssa.to_smt_variable(&revert_flag()).name
+        context().revert_flag.smt_var(ssa)
     )
 }
 
@@ -265,47 +292,9 @@ fn assign_variable_if_executing_regularly(
 pub fn executing_regularly(ssa: &mut SSATracker) -> String {
     format!(
         "(and (= {} #x0000000000000000000000000000000000000000000000000000000000000000) (= {} #x0000000000000000000000000000000000000000000000000000000000000000))",
-        ssa.to_smt_variable(&revert_flag()).name,
-        ssa.to_smt_variable(&stop_flag()).name
+        context().revert_flag.smt_var(ssa),
+        context().stop_flag.smt_var(ssa),
     )
-}
-
-fn revert_flag() -> Identifier {
-    identifier("_revert", 1024)
-}
-
-fn stop_flag() -> Identifier {
-    identifier("_stop", 1025)
-}
-
-fn calldata() -> Identifier {
-    identifier("_calldata", 1026)
-}
-
-fn memory() -> Identifier {
-    identifier("_memory", 1027)
-}
-fn memory_type() -> &'static str {
-    "(Array (_ BitVec 256) (_ BitVec 8))"
-}
-
-fn keccak256_32() -> String {
-    "_keccak256_32".to_string()
-}
-
-fn keccak256_64() -> String {
-    "_keccak256_64".to_string()
-}
-
-fn keccak256_generic() -> String {
-    "_keccak256".to_string()
-}
-
-fn storage() -> Identifier {
-    identifier("_storage", 1028)
-}
-fn storage_type() -> &'static str {
-    "(Array (_ BitVec 256) (_ BitVec 256))"
 }
 
 fn identifier(name: &str, id: u64) -> Identifier {
