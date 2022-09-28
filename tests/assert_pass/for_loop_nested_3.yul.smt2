@@ -12,7 +12,7 @@
 (declare-fun _number_2059_0 () (_ BitVec 256))
 (declare-fun _origin_2060_0 () (_ BitVec 256))
 (declare-fun _timestamp_2061_0 () (_ BitVec 256))
-(declare-fun _memory_2062_0 () (Array (_ BitVec 256) (_ BitVec 8)))
+(define-fun _memory_2062_0 () (Array (_ BitVec 256) (_ BitVec 8)) ((as const (Array (_ BitVec 256) (_ BitVec 8))) #x00))
 (declare-fun _storage_2063_0 () (Array (_ BitVec 256) (_ BitVec 256)))
 (declare-fun _calldata_2064_0 ((_ BitVec 256)) (_ BitVec 8))
 (declare-fun _keccak256_32_2065_0 ((_ BitVec 256)) (_ BitVec 256))
