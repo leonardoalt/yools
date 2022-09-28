@@ -1,48 +1,44 @@
-use crate::smt;
+use crate::smt::{self, SMTExpr, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 use yultsur::yul::*;
 
-pub fn init(ssa: &mut SSATracker) -> String {
-    let output = ContextVariables::all()
-        .iter()
+pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    let mut output = ContextVariables::all()
+        .into_iter()
         .map(|var| {
             let smt_var = ssa.introduce_variable_of_type(
                 &as_declaration(var.identifier.clone()),
-                var.type_.clone(),
+                var.codomain.clone(),
             );
             if let Some(default) = &var.default_value {
-                format!(
-                    "(define-fun {} {} {})\n",
-                    smt_var.name, var.full_type, default
-                )
+                smt::define_fun(smt_var, var.domain, default.clone())
             } else {
-                format!("(declare-fun {} {})\n", smt_var.name, var.full_type)
+                smt::declare_fun(smt_var, var.domain)
             }
         })
-        .collect::<Vec<_>>()
-        .join("");
+        .collect::<Vec<_>>();
     // TODO memory is zero initially.
 
     // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = context().address.smt_var(ssa);
-    format!(
-        "{}(assert (= ((_ extract 255 160) {address}) #x000000000000000000000000))\n",
-        output,
-    )
+    output.push(smt::assert(smt::eq(
+        smt::extract(255, 160, address),
+        smt::literal_12_bytes(0),
+    )));
+
+    output
 }
 
 struct ContextVariable {
     identifier: Identifier,
-    /// The full type "(input) (output)"
-    full_type: String,
-    /// Only the output type.
-    type_: String,
-    default_value: Option<String>,
+    domain: Vec<SMTSort>,
+    codomain: SMTSort,
+    default_value: Option<SMTExpr>,
 }
 
 impl ContextVariable {
-    pub fn smt_var(&self, ssa: &mut SSATracker) -> String {
-        ssa.to_smt_variable(&self.identifier).name
+    pub fn smt_var(&self, ssa: &mut SSATracker) -> SMTVariable {
+        ssa.to_smt_variable(&self.identifier)
     }
 }
 
@@ -60,16 +56,16 @@ macro_rules! context_variables {
                 ContextVariables {
                     $($var: ContextVariable{
                         identifier: identifier(&format!("_{}", stringify!($var)), id()),
-                        full_type: match $type {
-                            Type::Default => "() (_ BitVec 256)".to_string(),
-                            Type::Constant(t) => format!("() {t}"),
-                            Type::Function(in_, out) => format!("{in_} {out}"),
+                        domain: match $type {
+                            Type::Default => vec![],
+                            Type::Constant(_) => vec![],
+                            Type::Function(in_types, _) => in_types
                         },
-                        type_: match $type {
-                            Type::Default => "(_ BitVec 256)",
+                        codomain: match $type {
+                            Type::Default => smt::bv(256),
                             Type::Constant(t) => t,
                             Type::Function(_, out) => out,
-                        }.to_string(),
+                        },
                         default_value: $default_value,
                     }),*
                 }
@@ -90,8 +86,8 @@ macro_rules! context_variables {
 
 enum Type {
     Default,
-    Constant(&'static str),
-    Function(&'static str, &'static str),
+    Constant(SMTSort),
+    Function(Vec<SMTSort>, SMTSort),
 }
 
 context_variables! {
@@ -109,14 +105,14 @@ context_variables! {
     number: Type::Default; None,
     origin: Type::Default; None,
     timestamp: Type::Default; None,
-    memory: Type::Constant("(Array (_ BitVec 256) (_ BitVec 8))"); None,
-    storage: Type::Constant("(Array (_ BitVec 256) (_ BitVec 256))"); None,
-    calldata: Type::Function("((_ BitVec 256))", "(_ BitVec 8)"); None,
-    keccak256_32: Type::Function("((_ BitVec 256))", "(_ BitVec 256)"); None,
-    keccak256_64: Type::Function("((_ BitVec 256) (_ BitVec 256))", "(_ BitVec 256)"); None,
-    keccak256: Type::Function("((Array (_ BitVec 256) (_ BitVec 8)) (_ BitVec 256) (_ BitVec 256))", "(_ BitVec 256)"); None,
-    revert_flag: Type::Default; Some("#x0000000000000000000000000000000000000000000000000000000000000000".to_string()),
-    stop_flag: Type::Default; Some("#x0000000000000000000000000000000000000000000000000000000000000000".to_string())
+    memory: Type::Constant(smt::array(smt::bv(256), smt::bv(8))); None,
+    storage: Type::Constant(smt::array(smt::bv(256), smt::bv(256))); None,
+    calldata: Type::Function(vec![smt::bv(256)], smt::bv(8)); None,
+    keccak256_32: Type::Function(vec![smt::bv(256)], smt::bv(256)); None,
+    keccak256_64: Type::Function(vec![smt::bv(256), smt::bv(256)], smt::bv(256)); None,
+    keccak256: Type::Function(vec![smt::array(smt::bv(256), smt::bv(8)), smt::bv(256), smt::bv(256)], smt::bv(256)); None,
+    revert_flag: Type::Default; Some(0.into()),
+    stop_flag: Type::Default; Some(0.into())
 }
 
 // TODO can we make this a global variable?
@@ -124,153 +120,120 @@ fn context() -> ContextVariables {
     ContextVariables::default()
 }
 
-pub fn set_reverted(ssa: &mut SSATracker) -> String {
-    assign_variable_if_executing_regularly(
-        ssa,
-        &context().revert_flag.identifier,
-        "#x0000000000000000000000000000000000000000000000000000000000000001",
-    )
+pub fn set_reverted(ssa: &mut SSATracker) -> SMTStatement {
+    assign_variable_if_executing_regularly(ssa, &context().revert_flag.identifier, 1.into())
 }
 
-pub fn set_stopped(ssa: &mut SSATracker) -> String {
-    assign_variable_if_executing_regularly(
-        ssa,
-        &context().stop_flag.identifier,
-        "#x0000000000000000000000000000000000000000000000000000000000000001",
-    )
+pub fn set_stopped(ssa: &mut SSATracker) -> SMTStatement {
+    assign_variable_if_executing_regularly(ssa, &context().stop_flag.identifier, 1.into())
 }
 
-pub fn address(ssa: &mut SSATracker) -> String {
+pub fn address(ssa: &mut SSATracker) -> SMTVariable {
     context().address.smt_var(ssa)
 }
-pub fn origin(ssa: &mut SSATracker) -> String {
+pub fn origin(ssa: &mut SSATracker) -> SMTVariable {
     context().origin.smt_var(ssa)
 }
-pub fn caller(ssa: &mut SSATracker) -> String {
+pub fn caller(ssa: &mut SSATracker) -> SMTVariable {
     context().caller.smt_var(ssa)
 }
-pub fn callvalue(ssa: &mut SSATracker) -> String {
+pub fn callvalue(ssa: &mut SSATracker) -> SMTVariable {
     context().callvalue.smt_var(ssa)
 }
-pub fn calldatasize(ssa: &mut SSATracker) -> String {
+pub fn calldatasize(ssa: &mut SSATracker) -> SMTVariable {
     context().calldatasize.smt_var(ssa)
 }
-pub fn codesize(ssa: &mut SSATracker) -> String {
+pub fn codesize(ssa: &mut SSATracker) -> SMTVariable {
     context().codesize.smt_var(ssa)
 }
-pub fn gasprice(ssa: &mut SSATracker) -> String {
+pub fn gasprice(ssa: &mut SSATracker) -> SMTVariable {
     context().gasprice.smt_var(ssa)
 }
-pub fn coinbase(ssa: &mut SSATracker) -> String {
+pub fn coinbase(ssa: &mut SSATracker) -> SMTVariable {
     context().coinbase.smt_var(ssa)
 }
-pub fn timestamp(ssa: &mut SSATracker) -> String {
+pub fn timestamp(ssa: &mut SSATracker) -> SMTVariable {
     context().timestamp.smt_var(ssa)
 }
-pub fn number(ssa: &mut SSATracker) -> String {
+pub fn number(ssa: &mut SSATracker) -> SMTVariable {
     context().number.smt_var(ssa)
 }
-pub fn difficulty(ssa: &mut SSATracker) -> String {
+pub fn difficulty(ssa: &mut SSATracker) -> SMTVariable {
     context().difficulty.smt_var(ssa)
 }
-pub fn gaslimit(ssa: &mut SSATracker) -> String {
+pub fn gaslimit(ssa: &mut SSATracker) -> SMTVariable {
     context().gaslimit.smt_var(ssa)
 }
-pub fn chainid(ssa: &mut SSATracker) -> String {
+pub fn chainid(ssa: &mut SSATracker) -> SMTVariable {
     context().chainid.smt_var(ssa)
 }
-pub fn basefee(ssa: &mut SSATracker) -> String {
+pub fn basefee(ssa: &mut SSATracker) -> SMTVariable {
     context().basefee.smt_var(ssa)
 }
 
-pub fn calldataload(index: &String, ssa: &mut SSATracker) -> String {
+pub fn calldataload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     let calldata = context().calldata.smt_var(ssa);
     let arguments = (0..32)
-        .map(|i| format!("({} (bvadd {} #x{:064X}))", calldata, index, i))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!("(concat {})", arguments)
+        .map(|i| smt::uf(calldata.clone(), vec![smt::bvadd(index.clone(), i)]))
+        .collect::<Vec<_>>();
+    smt::concat(arguments)
 }
 
-pub fn mstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
+pub fn mstore(index: SMTExpr, value: SMTExpr, ssa: &mut SSATracker) -> SMTStatement {
     let before = context().memory.smt_var(ssa);
     let after = ssa.allocate_new_ssa_index(&context().memory.identifier);
 
-    let stored = (0..32).fold(before, |acc, i| {
-        let sub_index = format!("(bvadd {} #x{:064X})", index, i);
-        let byte_value = format!(
-            "((_ extract {} {}) {})",
-            255 - i * 8,
-            256 - (i + 1) * 8,
-            value
-        );
-        format!("(store {} {} {})", acc, sub_index, byte_value,)
+    let stored = (0..32).fold(before.into(), |acc, i| {
+        let sub_index = smt::bvadd(index.clone(), i);
+        let byte_value = smt::extract(255 - i * 8, 256 - (i + 1) * 8, value.clone());
+        smt::store(acc, sub_index, byte_value)
     });
-    format!(
-        "(define-const {} {} {})",
-        after.name,
-        context().memory.type_,
-        stored
-    )
+    smt::define_const(after, stored)
 }
 
-pub fn mload(index: &String, ssa: &mut SSATracker) -> String {
+pub fn mload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     let mem = context().memory.smt_var(ssa);
 
     let arguments = (0..32)
-        .map(|i| format!("(select {} (bvadd {} #x{:064X}))", mem, index, i))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!("(concat {})", arguments)
+        .map(|i| smt::select(mem.clone(), smt::bvadd(index.clone(), i)))
+        .collect::<Vec<_>>();
+    smt::concat(arguments)
 }
 
-pub fn keccak256(offset: &String, length: &String, ssa: &mut SSATracker) -> String {
-    let offset_0 = mload(offset, ssa);
-    let offset_32 = mload(&format!("(bvadd {} #x{:064X})", offset, 0x20), ssa);
+pub fn keccak256(offset: SMTExpr, length: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
+    let offset_0 = mload(offset.clone(), ssa);
+    let offset_32 = mload(smt::bvadd(offset.clone(), 0x20), ssa);
     smt::ite(
-        &smt::eq(length, &0x20),
-        &format!("({} {})", context().keccak256_32.smt_var(ssa), offset_0),
-        &smt::ite(
-            &smt::eq(length, &0x40),
-            &format!(
-                "({} {} {})",
+        smt::eq(length.clone(), 0x20),
+        smt::uf(context().keccak256_32.smt_var(ssa), vec![offset_0.clone()]),
+        smt::ite(
+            smt::eq(length.clone(), 0x40),
+            smt::uf(
                 context().keccak256_64.smt_var(ssa),
-                offset_0,
-                offset_32
+                vec![offset_0, offset_32],
             ),
-            &format!(
-                "({} {} {} {})",
+            smt::uf(
                 context().keccak256.smt_var(ssa),
-                context().memory.smt_var(ssa),
-                offset,
-                length
+                vec![context().memory.smt_var(ssa).into(), offset, length],
             ),
         ),
     )
 }
 
-pub fn sstore(index: &String, value: &String, ssa: &mut SSATracker) -> String {
+pub fn sstore(index: SMTExpr, value: SMTExpr, ssa: &mut SSATracker) -> SMTStatement {
     let before = context().storage.smt_var(ssa);
     let after = ssa.allocate_new_ssa_index(&context().storage.identifier);
 
-    let stored = format!("(store {} {} {})", before, index, value);
-    format!(
-        "(define-const {} {} {})",
-        after.name,
-        context().storage.type_,
-        stored
-    )
+    let stored = smt::store(before, index, value);
+    smt::define_const(after, stored)
 }
 
-pub fn sload(index: &String, ssa: &mut SSATracker) -> String {
-    format!("(select {} {})", context().storage.smt_var(ssa), index)
+pub fn sload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
+    smt::select(context().storage.smt_var(ssa), index)
 }
 
-pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
-    format!(
-        "(assert (not (= {} #x0000000000000000000000000000000000000000000000000000000000000000)))",
-        context().revert_flag.smt_var(ssa)
-    )
+pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> SMTStatement {
+    smt::assert(smt::neq(context().revert_flag.smt_var(ssa), 0))
 }
 
 /// Assigns to the variable if we neither stopped nor reverted. Otherwise, the variable keeps
@@ -278,22 +241,18 @@ pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> String {
 fn assign_variable_if_executing_regularly(
     ssa: &mut SSATracker,
     variable: &Identifier,
-    new_value: &str,
-) -> String {
+    new_value: SMTExpr,
+) -> SMTStatement {
     let old_value = ssa.to_smt_variable(variable);
     let update_condition = executing_regularly(ssa);
     let new_var = ssa.allocate_new_ssa_index(variable);
-    format!(
-        "(define-const {} (_ BitVec 256) (ite {} {} {}))",
-        new_var.name, update_condition, new_value, old_value.name
-    )
+    smt::define_const(new_var, smt::ite(update_condition, new_value, old_value))
 }
 
-pub fn executing_regularly(ssa: &mut SSATracker) -> String {
-    format!(
-        "(and (= {} #x0000000000000000000000000000000000000000000000000000000000000000) (= {} #x0000000000000000000000000000000000000000000000000000000000000000))",
-        context().revert_flag.smt_var(ssa),
-        context().stop_flag.smt_var(ssa),
+pub fn executing_regularly(ssa: &mut SSATracker) -> SMTExpr {
+    smt::and(
+        smt::eq(context().revert_flag.smt_var(ssa), 0),
+        smt::eq(context().stop_flag.smt_var(ssa), 0),
     )
 }
 

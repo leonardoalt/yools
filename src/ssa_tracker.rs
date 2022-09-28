@@ -1,4 +1,4 @@
-use crate::smt::{SMTFormat, SMTVariable};
+use crate::smt::{self, SMTExpr, SMTSort, SMTStatement, SMTVariable};
 use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use yultsur::yul::*;
@@ -12,7 +12,7 @@ pub struct SSATracker {
     highest: BTreeMap<u64, u64>,
     names: BTreeMap<u64, String>,
     /// Types of variables that are NOT 256 bit bitvectors.
-    types: HashMap<u64, String>,
+    types: HashMap<u64, SMTSort>,
 }
 
 impl SSATracker {
@@ -35,10 +35,10 @@ impl SSATracker {
     #[must_use]
     pub fn join_branches(
         &mut self,
-        skip_condition: impl SMTFormat,
+        skip_condition: SMTExpr,
         // this is the stored list
         ssa_skipped: BTreeMap<u64, u64>,
-    ) -> String {
+    ) -> Vec<SMTStatement> {
         let ssa_branch = std::mem::replace(&mut self.current, ssa_skipped);
         // Now "self.current" are the skipped values - we just update them.
 
@@ -48,13 +48,13 @@ impl SSATracker {
                 if let Some(&skipped_idx) = self.current.get(key) {
                     if skipped_idx != *value {
                         let new_ssa = self.allocate_new_ssa_index_by_id(*key);
-                        Some(format!(
-                            "(define-const {} {} (ite {} {} {}))\n",
-                            self.id_to_smt_variable(*key, new_ssa).name,
-                            self.type_of_id(*key),
-                            skip_condition.as_smt(),
-                            self.id_to_smt_variable(*key, skipped_idx).name,
-                            self.id_to_smt_variable(*key, *value).name,
+                        Some(smt::define_const(
+                            self.id_to_smt_variable(*key, new_ssa),
+                            smt::ite(
+                                skip_condition.clone(),
+                                self.id_to_smt_variable(*key, skipped_idx),
+                                self.id_to_smt_variable(*key, *value),
+                            ),
                         ))
                     } else {
                         None
@@ -64,7 +64,6 @@ impl SSATracker {
                 }
             })
             .collect::<Vec<_>>()
-            .join("")
     }
 
     pub fn allocate_new_ssa_index(&mut self, identifier: &Identifier) -> SMTVariable {
@@ -88,11 +87,10 @@ impl SSATracker {
     pub fn introduce_variable_of_type(
         &mut self,
         variable: &Identifier,
-        type_: String,
+        type_: SMTSort,
     ) -> SMTVariable {
-        let var = self.introduce_variable(variable);
         self.types.insert(self.identifier_to_id(variable), type_);
-        var
+        self.introduce_variable(variable)
     }
 
     pub fn to_smt_variable(&self, identifier: &Identifier) -> SMTVariable {
@@ -107,11 +105,8 @@ impl SSATracker {
             .collect()
     }
 
-    fn type_of_id(&self, id: u64) -> String {
-        self.types
-            .get(&id)
-            .unwrap_or(&"(_ BitVec 256)".to_string())
-            .clone()
+    fn type_of_id(&self, id: u64) -> SMTSort {
+        self.types.get(&id).unwrap_or(&SMTSort::BV(256)).clone()
     }
 
     fn allocate_new_ssa_index_by_id(&mut self, var_id: u64) -> u64 {
@@ -127,6 +122,7 @@ impl SSATracker {
     fn id_to_smt_variable(&self, id: u64, ssa_idx: u64) -> SMTVariable {
         SMTVariable {
             name: format!("{}_{}_{}", self.names[&id], id, ssa_idx),
+            sort: self.type_of_id(id),
         }
     }
 
