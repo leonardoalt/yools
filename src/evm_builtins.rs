@@ -38,7 +38,7 @@ impl Instructions for EVMInstructions {
             })
         };
 
-        match builtin.name.as_str() {
+        match builtin.name {
             "stop" => evm_context::set_stopped(ssa),
             "add" => direct("bvadd"),
             "sub" => direct("bvsub"),
