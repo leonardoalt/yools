@@ -374,6 +374,10 @@ pub fn literal_1_byte(n: u64) -> SMTExpr {
     literal(format!("{:02x}", n), SMTSort::BV(8))
 }
 
+pub fn literal_4_bytes(n: u64) -> SMTExpr {
+    literal(format!("{:08x}", n), SMTSort::BV(32))
+}
+
 pub fn literal_12_bytes(n: u64) -> SMTExpr {
     literal(format!("{:024x}", n), SMTSort::BV(96))
 }

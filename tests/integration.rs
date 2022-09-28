@@ -145,6 +145,24 @@ mod revert_unreachable {
     include!(concat!(env!("OUT_DIR"), "/test_revert_unreachable.rs"));
 }
 
+mod panic_unreachable {
+    use super::*;
+    // This function is called from tests constructed at build time
+    // and included below.
+    // build.rs creates one test per .yul file in the panic_unreachable directory.
+    fn test_panic_unreachable(content: &str, file: &str) {
+        let ast = parse_and_resolve::<EVMInstructions>(content, file);
+        let (query, _) = encoder::encode_solc_panic_unreachable::<EVMInstructions>(
+            &ast,
+            loop_unroll_default(&content),
+            &[],
+        );
+        unsat(&query, file);
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/test_panic_unreachable.rs"));
+}
+
 fn parse_and_resolve<Instr: dialect::Dialect>(content: &str, file: &str) -> yultsur::yul::Block {
     match yul_parser::parse_block(content) {
         Err(err) => {

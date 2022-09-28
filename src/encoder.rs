@@ -51,6 +51,25 @@ pub fn encode_revert_unreachable<T: Instructions>(
     encoder.encode(ast, loop_unroll);
     encoder.encode_revert_unreachable();
 
+    encode_with_counterexamples(encoder, counterexamples)
+}
+
+pub fn encode_solc_panic_unreachable<T: Instructions>(
+    ast: &Block,
+    loop_unroll: u64,
+    counterexamples: &[Expression],
+) -> (String, Vec<String>) {
+    let mut encoder = Encoder::<T>::default();
+    encoder.encode(ast, loop_unroll);
+    encoder.encode_solc_panic_unreachable();
+
+    encode_with_counterexamples(encoder, counterexamples)
+}
+
+fn encode_with_counterexamples<T: Instructions>(
+    mut encoder: Encoder<T>,
+    counterexamples: &[Expression],
+) -> (String, Vec<String>) {
     let encoded_counterexamples = counterexamples
         .iter()
         .map(|expr| encoder.encode_expression(expr).pop().unwrap().name)
@@ -343,6 +362,11 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 impl<T> Encoder<T> {
     fn encode_revert_unreachable(&mut self) {
         let output = evm_context::encode_revert_unreachable(&mut self.ssa_tracker);
+        self.out(output);
+    }
+
+    fn encode_solc_panic_unreachable(&mut self) {
+        let output = evm_context::encode_solc_panic_unreachable(&mut self.ssa_tracker);
         self.out(output);
     }
 
