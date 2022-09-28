@@ -18,7 +18,7 @@ impl dialect::Dialect for EVMInstructionsWithAssert {
     fn builtin(name: &str) -> Option<dialect::Builtin> {
         match name {
             "assert" => Some(dialect::Builtin {
-                name: name.to_string(),
+                name: "assert",
                 parameters: 1,
                 returns: 0,
             }),
@@ -35,7 +35,7 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
     ) -> String {
-        match builtin.name.as_str() {
+        match builtin.name {
             "assert" => format!("(assert (and {} (= #x0000000000000000000000000000000000000000000000000000000000000000 {})))", evm_context::executing_regularly(ssa), arguments[0].name),
             _ => self
                 .0
