@@ -1,6 +1,6 @@
 use crate::encoder::Instructions;
 use crate::evm_context;
-use crate::smt::SMTVariable;
+use crate::smt::{self, SMTExpr, SMTOp, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 use yultsur::dialect::{Builtin, Dialect, EVMDialect};
 
@@ -20,109 +20,96 @@ impl Instructions for EVMInstructions {
         arguments: Vec<SMTVariable>,
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
-    ) -> String {
-        let single_return = |value: String| {
+    ) -> SMTStatement {
+        let single_return = |value: SMTExpr| {
             assert_eq!(return_vars.len(), 1);
-            format!(
-                "(define-const {} (_ BitVec 256) {})",
-                &return_vars.first().unwrap().name,
-                value
-            )
+            smt::define_const(return_vars.first().unwrap().clone(), value)
         };
-        let direct = |smt_name: &str| {
-            let smt_encoding =
-                format!("({} {} {})", smt_name, arguments[0].name, arguments[1].name);
-            single_return(match is_bool_function(smt_name) {
+        let direct = |smt_op: SMTOp| {
+            let smt_encoding = SMTExpr {
+                op: smt_op.clone(),
+                args: arguments.clone().into_iter().map(|v| v.into()).collect(),
+            };
+            single_return(match is_bool_function(smt_op) {
                 true => wrap_boolean(smt_encoding),
                 false => smt_encoding,
             })
         };
 
+        let mut it = arguments.clone().into_iter();
+        let arg_0 = it.next();
+        let arg_1 = it.next();
+
         match builtin.name {
             "stop" => evm_context::set_stopped(ssa),
-            "add" => direct("bvadd"),
-            "sub" => direct("bvsub"),
-            "mul" => direct("bvmul"),
-            "div" => direct("bvudiv"), // TODO check that the parameter oder is correct
-            "sdiv" => direct("bvsdiv"),
-            "mod" => direct("bvurem"),
-            "smod" => direct("bvsmod"), // TODO check if it is bvsmod or bvsrem (they differ in sign)
-            "not" => single_return(format!("(bvnot {})", arguments[0].name)),
-            "lt" => direct("bvult"),
-            "gt" => direct("bvugt"),
-            "slt" => direct("bvslt"),
-            "sgt" => direct("bvsgt"),
-            "eq" => direct("="),
-            "iszero" => single_return(wrap_boolean(format!(
-                "(= {} #x0000000000000000000000000000000000000000000000000000000000000000)",
-                arguments[0].name
-            ))),
-            "and" => direct("bvand"),
-            "or" => direct("bvor"),
-            "xor" => direct("bvxor"),
+            "add" => direct(SMTOp::BvAdd),
+            "sub" => direct(SMTOp::BvSub),
+            "mul" => direct(SMTOp::BvMul),
+            "div" => direct(SMTOp::BvUDiv), // TODO check that the parameter oder is correct
+            "sdiv" => direct(SMTOp::BvSDiv),
+            "mod" => direct(SMTOp::BvURem),
+            "smod" => direct(SMTOp::BvSMod), // TODO check if it is bvsmod or bvsrem (they differ in sign)
+            "not" => single_return(smt::bvnot(arg_0.unwrap())),
+            "lt" => direct(SMTOp::BvULt),
+            "gt" => direct(SMTOp::BvUGt),
+            "slt" => direct(SMTOp::BvSLt),
+            "sgt" => direct(SMTOp::BvSGt),
+            "eq" => direct(SMTOp::Eq),
+            "iszero" => single_return(wrap_boolean(smt::eq_zero(arg_0.unwrap()))),
+            "and" => direct(SMTOp::BvAnd),
+            "or" => direct(SMTOp::BvOr),
+            "xor" => direct(SMTOp::BvXor),
             "byte" => {
-                let byte_index = &arguments[0].name;
-                let input = &arguments[1].name;
-                let shift_amount =
-                    format!("(bvsub #x{:064x} (bvmul #x{:064x} {byte_index}))", 248, 8);
-                single_return(format!(
-                    "(ite (bvugt {byte_index} #x{:064x}) #x{:064x} (bvand #x{:064x} (bvlshr {input} {shift_amount})))",
-                    31,
+                let byte_index: SMTExpr = arg_0.unwrap().into();
+                let shift_amount = smt::bvsub(248, smt::bvmul(8, byte_index.clone()));
+                single_return(smt::ite(
+                    smt::bvugt(byte_index, 31),
                     0,
-                    0xff
+                    smt::bvand(0xff, smt::bvlshr(arg_1.unwrap(), shift_amount)),
                 ))
             }
-            "shl" => single_return(format!(
-                "(bvshl {} {})",
-                arguments[1].name, arguments[0].name
-            )),
-            "shr" => single_return(format!(
-                "(bvlshr {} {})",
-                arguments[1].name, arguments[0].name
-            )),
-            "sar" => single_return(format!(
-                "(bvashr {} {})",
-                arguments[1].name, arguments[0].name
-            )),
+            "shl" => single_return(smt::bvshl(arg_1.unwrap(), arg_0.unwrap())),
+            "shr" => single_return(smt::bvlshr(arg_1.unwrap(), arg_0.unwrap())),
+            "sar" => single_return(smt::bvashr(arg_1.unwrap(), arg_0.unwrap())),
             "addmod" => panic!("Builtin {} not implemented", builtin.name), // TODO // TODO
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "keccak256" => single_return(evm_context::keccak256(
-                &arguments[0].name,
-                &arguments[1].name,
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
                 ssa,
             )),
-            "address" => single_return(evm_context::address(ssa)),
+            "address" => single_return(evm_context::address(ssa).into()),
             "balance" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "origin" => single_return(evm_context::origin(ssa)),
-            "caller" => single_return(evm_context::caller(ssa)),
-            "callvalue" => single_return(evm_context::callvalue(ssa)),
-            "calldataload" => single_return(evm_context::calldataload(&arguments[0].name, ssa)),
-            "calldatasize" => single_return(evm_context::calldatasize(ssa)),
+            "origin" => single_return(evm_context::origin(ssa).into()),
+            "caller" => single_return(evm_context::caller(ssa).into()),
+            "callvalue" => single_return(evm_context::callvalue(ssa).into()),
+            "calldataload" => single_return(evm_context::calldataload(arg_0.unwrap().into(), ssa)),
+            "calldatasize" => single_return(evm_context::calldatasize(ssa).into()),
             "calldatacopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "codesize" => single_return(evm_context::codesize(ssa)),
+            "codesize" => single_return(evm_context::codesize(ssa).into()),
             "codecopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "gasprice" => single_return(evm_context::gasprice(ssa)),
+            "gasprice" => single_return(evm_context::gasprice(ssa).into()),
             "extcodesize" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "extcodecopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "returndatasize" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "returndatacopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "extcodehash" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "blockhash" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-            "coinbase" => single_return(evm_context::coinbase(ssa)),
-            "timestamp" => single_return(evm_context::timestamp(ssa)),
-            "number" => single_return(evm_context::number(ssa)),
-            "difficulty" => single_return(evm_context::difficulty(ssa)),
-            "gaslimit" => single_return(evm_context::gaslimit(ssa)),
-            "chainid" => single_return(evm_context::chainid(ssa)),
+            "coinbase" => single_return(evm_context::coinbase(ssa).into()),
+            "timestamp" => single_return(evm_context::timestamp(ssa).into()),
+            "number" => single_return(evm_context::number(ssa).into()),
+            "difficulty" => single_return(evm_context::difficulty(ssa).into()),
+            "gaslimit" => single_return(evm_context::gaslimit(ssa).into()),
+            "chainid" => single_return(evm_context::chainid(ssa).into()),
             "selfbalance" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "basefee" => single_return(evm_context::basefee(ssa)),
-            "pop" => String::new(),
-            "mload" => single_return(evm_context::mload(&arguments[0].name, ssa)),
-            "mstore" => evm_context::mstore(&arguments[0].name, &arguments[1].name, ssa),
+            "basefee" => single_return(evm_context::basefee(ssa).into()),
+            "pop" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "mload" => single_return(evm_context::mload(arg_0.unwrap().into(), ssa)),
+            "mstore" => evm_context::mstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
             "mstore8" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "sload" => single_return(evm_context::sload(&arguments[0].name, ssa)),
-            "sstore" => evm_context::sstore(&arguments[0].name, &arguments[1].name, ssa),
+            "sload" => single_return(evm_context::sload(arg_0.unwrap().into(), ssa)),
+            "sstore" => evm_context::sstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
             "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "gas" => panic!("Builtin {} not implemented", builtin.name),   // TODO
             "log0" => panic!("Builtin {} not implemented", builtin.name),  // TODO
@@ -145,16 +132,19 @@ impl Instructions for EVMInstructions {
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
 
-            "memoryguard" => single_return(arguments[0].name.to_string()),
+            "memoryguard" => single_return(arg_0.unwrap().into()),
             _ => panic!("Invalid builtin {}", builtin.name),
         }
     }
 }
 
-fn is_bool_function(name: &str) -> bool {
-    matches!(name, "bvult" | "bvugt" | "bvslt" | "bvsgt" | "=")
+fn is_bool_function(op: SMTOp) -> bool {
+    matches!(
+        op,
+        SMTOp::BvULt | SMTOp::BvUGt | SMTOp::BvSLt | SMTOp::BvSGt | SMTOp::Eq
+    )
 }
 
-fn wrap_boolean(boolean_expression: String) -> String {
-    format!("(ite {boolean_expression} #x0000000000000000000000000000000000000000000000000000000000000001 #x0000000000000000000000000000000000000000000000000000000000000000)")
+fn wrap_boolean(boolean_expression: SMTExpr) -> SMTExpr {
+    smt::ite(boolean_expression, 1, 0)
 }

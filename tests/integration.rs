@@ -4,7 +4,7 @@ use yools::encoder;
 use yools::encoder::Instructions;
 use yools::evm_builtins::EVMInstructions;
 use yools::evm_context;
-use yools::smt::SMTVariable;
+use yools::smt::{self, SMTStatement, SMTVariable};
 use yools::solver;
 use yools::ssa_tracker::SSATracker;
 
@@ -34,9 +34,12 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
         arguments: Vec<SMTVariable>,
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
-    ) -> String {
+    ) -> SMTStatement {
         match builtin.name {
-            "assert" => format!("(assert (and {} (= #x0000000000000000000000000000000000000000000000000000000000000000 {})))", evm_context::executing_regularly(ssa), arguments[0].name),
+            "assert" => smt::assert(smt::and(
+                evm_context::executing_regularly(ssa),
+                smt::eq_zero(arguments.into_iter().next().unwrap()),
+            )),
             _ => self
                 .0
                 .encode_builtin_call(builtin, arguments, return_vars, ssa),

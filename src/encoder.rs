@@ -1,5 +1,5 @@
 use crate::evm_context;
-use crate::smt::{self, SMTExpression, SMTFormat, SMTLiteral, SMTSort, SMTStatement, SMTVariable};
+use crate::smt::{self, SMTExpr, SMTFormat, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 
 use yultsur::dialect::{Builtin, Dialect};
@@ -16,7 +16,7 @@ pub trait Instructions: Default + Dialect {
         arguments: Vec<SMTVariable>,
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
-    ) -> String;
+    ) -> SMTStatement;
 }
 
 #[derive(Default)]
@@ -24,7 +24,7 @@ pub struct Encoder<InstructionsType> {
     function_definitions: BTreeMap<u64, yul::FunctionDefinition>,
     expression_counter: u64,
     ssa_tracker: SSATracker,
-    output: String,
+    output: Vec<SMTStatement>,
     interpreter: InstructionsType,
     loop_unroll: u64,
 }
@@ -32,14 +32,24 @@ pub struct Encoder<InstructionsType> {
 pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
-    encoder.output
+    encoder
+        .output
+        .iter()
+        .map(|s| s.as_smt())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn encode_revert_unreachable<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
     encoder.encode_revert_unreachable();
-    encoder.output
+    encoder
+        .output
+        .iter()
+        .map(|s| s.as_smt())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -76,7 +86,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
     fn encode_context_init(&mut self) {
         let output = evm_context::init(&mut self.ssa_tracker);
-        self.out(output);
+        self.out_vec(output);
     }
 
     fn collect_function_definitions(&mut self, block: &Block) {
@@ -91,10 +101,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     pub fn encode_function(&mut self, function: &FunctionDefinition) -> FunctionVariables {
         for param in &function.parameters {
             let var = self.ssa_tracker.introduce_variable(param);
-            self.out(SMTStatement::DeclareConst(
-                var.name.as_smt(),
-                SMTSort::bitvec(256),
-            ))
+            self.out(smt::declare_const(var))
         }
         let parameters = self.ssa_tracker.to_smt_variables(&function.parameters);
         self.encode_variable_declaration(&VariableDeclaration {
@@ -168,8 +175,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
         let output = self
             .ssa_tracker
-            .join_branches(smt::eq(&cond[0], &0), prev_ssa);
-        self.out(output);
+            .join_branches(smt::eq(cond[0].clone(), 0u64), prev_ssa);
+        self.out_vec(output);
     }
 
     fn encode_for(&mut self, for_loop: &yul::ForLoop) {
@@ -187,8 +194,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
             let output = self
                 .ssa_tracker
-                .join_branches(smt::eq(&cond[0], &0), prev_ssa);
-            self.out(output);
+                .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+            self.out_vec(output);
         }
     }
 
@@ -211,34 +218,29 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             self.encode_block(body);
 
             let skip_condition = if is_default {
-                format!(
-                    "(or {})",
+                smt::or_vec(
                     switch
                         .cases
                         .iter()
                         .filter(|case| case.literal.is_some())
                         .map(|case| {
                             smt::eq(
-                                &discriminator[0],
-                                &self
-                                    .encode_literal_value(case.literal.as_ref().unwrap())
-                                    .as_smt(),
+                                discriminator[0].clone(),
+                                self.encode_literal_value(case.literal.as_ref().unwrap()),
                             )
                         })
-                        .collect::<Vec<_>>()
-                        .join(" ")
+                        .collect::<Vec<_>>(),
                 )
             } else {
-                SMTExpression::Not(Box::new(SMTExpression::Eq(
-                    Box::new(discriminator[0].name.clone()),
+                smt::neq(
+                    discriminator[0].clone(),
                     self.encode_literal_value(literal.as_ref().unwrap()),
-                )))
-                .as_smt()
+                )
             };
             let output = self
                 .ssa_tracker
                 .join_branches(skip_condition, post_switch_ssa);
-            self.out(output);
+            self.out_vec(output);
             post_switch_ssa = self.ssa_tracker.take_current_ssa();
             post_switch_ssa.retain(|key, _| pre_switch_ssa.contains_key(key));
         }
@@ -255,11 +257,11 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     }
 
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
-        let var = self.new_temporary_variable();
-        self.out(SMTStatement::DefineConst(
-            var.name.as_smt(),
-            SMTSort::bitvec(256),
-            self.encode_literal_value(literal).as_smt(),
+        let sort = SMTSort::BV(256);
+        let var = self.new_temporary_variable(sort);
+        self.out(smt::define_const(
+            var.clone(),
+            self.encode_literal_value(literal),
         ));
         var
     }
@@ -285,7 +287,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             IdentifierID::BuiltinReference => {
                 let builtin = &InstructionsType::builtin(&call.function.name).unwrap();
                 let return_vars: Vec<SMTVariable> = (0..builtin.returns)
-                    .map(|_i| self.new_temporary_variable())
+                    .map(|_i| self.new_temporary_variable(SMTSort::BV(256)))
                     .collect();
 
                 let result = self.interpreter.encode_builtin_call(
@@ -302,14 +304,9 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 let function_vars = self.encode_function(&fun_def);
                 assert!(arguments.len() == function_vars.parameters.len());
                 arguments
-                    .iter()
+                    .into_iter()
                     .zip(function_vars.parameters)
-                    .for_each(|(arg, param)| {
-                        self.out(SMTStatement::Assert(Box::new(SMTExpression::Eq(
-                            Box::new(arg.name.clone()),
-                            Box::new(param.name),
-                        ))))
-                    });
+                    .for_each(|(arg, param)| self.out(smt::assert(smt::eq(arg, param))));
                 function_vars.returns
             }
             _ => panic!(
@@ -330,35 +327,33 @@ impl<T> Encoder<T> {
     fn encode_assignment_inner(&mut self, variables: &[Identifier], values: Vec<SMTVariable>) {
         assert_eq!(values.len(), variables.len());
 
-        for (v, val) in variables.iter().zip(values.iter()) {
+        for (v, val) in variables.iter().zip(values.into_iter()) {
             let var = self.ssa_tracker.allocate_new_ssa_index(v);
-            self.out(SMTStatement::DefineConst(
-                var.name.as_smt(),
-                SMTSort::bitvec(256),
-                val.name.as_smt(),
-            ));
+            self.out(smt::define_const(var, val.into()));
         }
     }
 
-    fn encode_literal_value(&self, literal: &Literal) -> Box<SMTLiteral> {
-        Box::new(SMTLiteral::Hex(if literal.literal.starts_with("0x") {
-            format!("{:0>64}", &literal.literal[2..])
+    fn encode_literal_value(&self, literal: &Literal) -> SMTExpr {
+        if literal.literal.starts_with("0x") {
+            smt::literal(format!("{:0>64}", &literal.literal[2..]))
         } else {
-            format!(
+            smt::literal(format!(
                 "{:064X}",
                 literal.literal.parse::<num_bigint::BigUint>().unwrap()
-            )
-        }))
-    }
-
-    fn new_temporary_variable(&mut self) -> SMTVariable {
-        self.expression_counter += 1;
-        SMTVariable {
-            name: format!("_{}", self.expression_counter),
+            ))
         }
     }
 
-    fn out(&mut self, x: impl SMTFormat) {
-        self.output = format!("{}{}\n", self.output, x.as_smt())
+    fn new_temporary_variable(&mut self, sort: SMTSort) -> SMTVariable {
+        self.expression_counter += 1;
+        SMTVariable::new(format!("_{}", self.expression_counter), sort)
+    }
+
+    fn out(&mut self, statement: SMTStatement) {
+        self.output.push(statement);
+    }
+
+    fn out_vec(&mut self, statements: Vec<SMTStatement>) {
+        self.output.extend(statements);
     }
 }
