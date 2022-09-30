@@ -80,7 +80,9 @@ pub enum SMTOp {
     BvURem,
     BvSMod,
     BvULt,
+    BvULE,
     BvUGt,
+    BvUGE,
     BvSLt,
     BvSGt,
     BvShl,
@@ -251,9 +253,23 @@ pub fn bvult<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
     }
 }
 
+pub fn bvule<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
+    SMTExpr {
+        op: SMTOp::BvULE,
+        args: vec![lhs.into(), rhs.into()],
+    }
+}
+
 pub fn bvugt<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
     SMTExpr {
         op: SMTOp::BvUGt,
+        args: vec![lhs.into(), rhs.into()],
+    }
+}
+
+pub fn bvuge<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
+    SMTExpr {
+        op: SMTOp::BvUGE,
         args: vec![lhs.into(), rhs.into()],
     }
 }
@@ -529,10 +545,26 @@ impl SMTFormat for SMTExpr {
                     self.args[1].as_smt()
                 )
             }
+            SMTOp::BvULE => {
+                assert!(self.args.len() == 2);
+                format!(
+                    "(bvule {} {})",
+                    self.args[0].as_smt(),
+                    self.args[1].as_smt()
+                )
+            }
             SMTOp::BvUGt => {
                 assert!(self.args.len() == 2);
                 format!(
                     "(bvugt {} {})",
+                    self.args[0].as_smt(),
+                    self.args[1].as_smt()
+                )
+            }
+            SMTOp::BvUGE => {
+                assert!(self.args.len() == 2);
+                format!(
+                    "(bvuge {} {})",
                     self.args[0].as_smt(),
                     self.args[1].as_smt()
                 )
