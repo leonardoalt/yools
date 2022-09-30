@@ -90,6 +90,7 @@ pub enum SMTOp {
     Concat,
     Select,
     Store,
+    AsConst(SMTSort),
     Literal(String),
     Variable(SMTVariable),
     UF(SMTVariable), // TODO We should have a specialized SMTFunction
@@ -320,6 +321,13 @@ pub fn store<A: Into<SMTExpr>, I: Into<SMTExpr>, V: Into<SMTExpr>>(
     }
 }
 
+pub fn as_const<V: Into<SMTExpr>>(sort: SMTSort, val: V) -> SMTExpr {
+    SMTExpr {
+        op: SMTOp::AsConst(sort),
+        args: vec![val.into()],
+    }
+}
+
 pub fn literal(lit: String) -> SMTExpr {
     SMTExpr {
         op: SMTOp::Literal(lit),
@@ -331,6 +339,13 @@ pub fn uf(function: SMTVariable, args: Vec<SMTExpr>) -> SMTExpr {
     SMTExpr {
         op: SMTOp::UF(function),
         args,
+    }
+}
+
+pub fn literal_1_byte(n: u64) -> SMTExpr {
+    SMTExpr {
+        op: SMTOp::Literal(format!("{:02x}", n)),
+        args: vec![],
     }
 }
 
@@ -572,6 +587,10 @@ impl SMTFormat for SMTExpr {
                     self.args[1].as_smt(),
                     self.args[2].as_smt()
                 )
+            }
+            SMTOp::AsConst(sort) => {
+                assert!(self.args.len() == 1);
+                format!("((as const {}) {})", sort.as_smt(), self.args[0].as_smt())
             }
 
             SMTOp::Literal(lit) => format!("#x{}", lit),

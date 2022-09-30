@@ -105,7 +105,7 @@ context_variables! {
     number: Type::Default; None,
     origin: Type::Default; None,
     timestamp: Type::Default; None,
-    memory: Type::Constant(smt::array(smt::bv(256), smt::bv(8))); None,
+    memory: Type::Constant(smt::array(smt::bv(256), smt::bv(8))); Some(smt::as_const(smt::array(smt::bv(256), smt::bv(8)), smt::literal_1_byte(0))),
     storage: Type::Constant(smt::array(smt::bv(256), smt::bv(256))); None,
     calldata: Type::Function(vec![smt::bv(256)], smt::bv(8)); None,
     keccak256_32: Type::Function(vec![smt::bv(256)], smt::bv(256)); None,
