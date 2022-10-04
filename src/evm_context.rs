@@ -191,6 +191,13 @@ pub fn mstore(index: SMTExpr, value: SMTExpr, ssa: &mut SSATracker) -> SMTStatem
     smt::define_const(after, stored)
 }
 
+pub fn mstore8(index: SMTExpr, value: SMTExpr, ssa: &mut SSATracker) -> SMTStatement {
+    let before = context().memory.smt_var(ssa);
+    let after = ssa.allocate_new_ssa_index(&context().memory.identifier);
+
+    smt::define_const(after, smt::store(before, index, smt::extract(7, 0, value)))
+}
+
 pub fn mload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     let mem = context().memory.smt_var(ssa);
 

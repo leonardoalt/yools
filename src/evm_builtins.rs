@@ -107,7 +107,7 @@ impl Instructions for EVMInstructions {
             "pop" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "mload" => single_return(evm_context::mload(arg_0.unwrap().into(), ssa)),
             "mstore" => evm_context::mstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
-            "mstore8" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "mstore8" => evm_context::mstore8(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
             "sload" => single_return(evm_context::sload(arg_0.unwrap().into(), ssa)),
             "sstore" => evm_context::sstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
             "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
