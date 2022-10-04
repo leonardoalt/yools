@@ -22,10 +22,13 @@ impl Instructions for EVMInstructions {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         _path_conditions: &[SMTExpr],
-    ) -> SMTStatement {
+    ) -> Vec<SMTStatement> {
         let single_return = |value: SMTExpr| {
             assert_eq!(return_vars.len(), 1);
-            smt::define_const(return_vars.first().unwrap().clone(), value)
+            vec![smt::define_const(
+                return_vars.first().unwrap().clone(),
+                value,
+            )]
         };
         let direct = |smt_op: SMTOp| {
             let smt_encoding = SMTExpr {
@@ -43,7 +46,7 @@ impl Instructions for EVMInstructions {
         let arg_1 = it.next();
 
         match builtin.name {
-            "stop" => evm_context::set_stopped(ssa),
+            "stop" => vec![evm_context::set_stopped(ssa)],
             "add" => direct(SMTOp::BvAdd),
             "sub" => direct(SMTOp::BvSub),
             "mul" => direct(SMTOp::BvMul),
@@ -110,10 +113,22 @@ impl Instructions for EVMInstructions {
             "basefee" => single_return(evm_context::basefee(ssa).into()),
             "pop" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "mload" => single_return(evm_context::mload(arg_0.unwrap().into(), ssa)),
-            "mstore" => evm_context::mstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
-            "mstore8" => evm_context::mstore8(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
+            "mstore" => vec![evm_context::mstore(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
+            "mstore8" => vec![evm_context::mstore8(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
             "sload" => single_return(evm_context::sload(arg_0.unwrap().into(), ssa)),
-            "sstore" => evm_context::sstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
+            "sstore" => vec![evm_context::sstore(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
             "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "gas" => panic!("Builtin {} not implemented", builtin.name),   // TODO
             "log0" => panic!("Builtin {} not implemented", builtin.name),  // TODO
@@ -124,7 +139,7 @@ impl Instructions for EVMInstructions {
             "create" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "call" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "return" => evm_context::set_stopped(ssa),                     // TODO store returndata
+            "return" => vec![evm_context::set_stopped(ssa)],               // TODO store returndata
             "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "create2" =>
@@ -132,7 +147,7 @@ impl Instructions for EVMInstructions {
             {
                 panic!("Builtin {} not implemented", builtin.name)
             } // TODO
-            "revert" => evm_context::set_reverted(ssa),
+            "revert" => vec![evm_context::set_reverted(ssa)],
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
 
