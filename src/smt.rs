@@ -37,7 +37,7 @@ pub struct SMTExpr {
 impl From<u64> for SMTExpr {
     fn from(input: u64) -> SMTExpr {
         SMTExpr {
-            op: SMTOp::Literal(format!("{:064x}", input)),
+            op: SMTOp::Literal(format!("{:064x}", input), SMTSort::BV(256)),
             args: vec![],
         }
     }
@@ -91,7 +91,7 @@ pub enum SMTOp {
     Select,
     Store,
     AsConst(SMTSort),
-    Literal(String),
+    Literal(String, SMTSort),
     Variable(SMTVariable),
     UF(SMTVariable), // TODO We should have a specialized SMTFunction
 }
@@ -132,9 +132,13 @@ pub fn and<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
 }
 
 pub fn and_vec(args: Vec<SMTExpr>) -> SMTExpr {
-    SMTExpr {
-        op: SMTOp::And,
-        args,
+    match args.len() {
+        0 => literal_true(),
+        1 => args.into_iter().next().unwrap(),
+        _ => SMTExpr {
+            op: SMTOp::And,
+            args,
+        },
     }
 }
 
@@ -328,9 +332,9 @@ pub fn as_const<V: Into<SMTExpr>>(sort: SMTSort, val: V) -> SMTExpr {
     }
 }
 
-pub fn literal(lit: String) -> SMTExpr {
+pub fn literal(lit: String, sort: SMTSort) -> SMTExpr {
     SMTExpr {
-        op: SMTOp::Literal(lit),
+        op: SMTOp::Literal(lit, sort),
         args: vec![],
     }
 }
@@ -343,17 +347,26 @@ pub fn uf(function: SMTVariable, args: Vec<SMTExpr>) -> SMTExpr {
 }
 
 pub fn literal_1_byte(n: u64) -> SMTExpr {
+    literal(format!("{:02x}", n), SMTSort::BV(8))
+}
+
+pub fn literal_12_bytes(n: u64) -> SMTExpr {
+    literal(format!("{:024x}", n), SMTSort::BV(96))
+}
+
+fn literal_bool(lit: String) -> SMTExpr {
     SMTExpr {
-        op: SMTOp::Literal(format!("{:02x}", n)),
+        op: SMTOp::Literal(lit, SMTSort::Bool),
         args: vec![],
     }
 }
 
-pub fn literal_12_bytes(n: u64) -> SMTExpr {
-    SMTExpr {
-        op: SMTOp::Literal(format!("{:024x}", n)),
-        args: vec![],
-    }
+pub fn literal_true() -> SMTExpr {
+    literal_bool("true".to_string())
+}
+
+pub fn literal_false() -> SMTExpr {
+    literal_bool("false".to_string())
 }
 
 // SMT statement builders
@@ -593,7 +606,11 @@ impl SMTFormat for SMTExpr {
                 format!("((as const {}) {})", sort.as_smt(), self.args[0].as_smt())
             }
 
-            SMTOp::Literal(lit) => format!("#x{}", lit),
+            SMTOp::Literal(lit, sort) => match sort {
+                SMTSort::Bool => lit.to_string(),
+                SMTSort::BV(_) => format!("#x{}", lit),
+                _ => panic!(),
+            },
             SMTOp::Variable(var) if self.args.is_empty() => var.as_smt(),
             SMTOp::Variable(var) => format!("({} {})", var.as_smt(), self.args.as_smt()),
 

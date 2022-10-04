@@ -20,6 +20,7 @@ impl Instructions for EVMInstructions {
         arguments: Vec<SMTVariable>,
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
+        _path_conditions: &[SMTExpr],
     ) -> SMTStatement {
         let single_return = |value: SMTExpr| {
             assert_eq!(return_vars.len(), 1);
