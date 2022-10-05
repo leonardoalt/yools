@@ -4,7 +4,7 @@ use std::str::FromStr;
 use tempfile::NamedTempFile;
 
 pub fn query_smt(query: &String) -> bool {
-    query_smt_with_solver(query, SolverConfig::new("cvc4"))
+    query_smt_with_solver(query, SolverConfig::new("cvc5"))
 }
 
 pub fn query_smt_with_solver(query: &String, solver: SolverConfig) -> bool {
@@ -59,11 +59,11 @@ impl SolverConfig {
             },
             Ok(SMTSolver::CVC4) => SolverConfig {
                 cmd: cmd.into(),
-                args: vec!["--lang".into(), "smt2".into()],
+                args: vec!["--lang".into(), "smt2".into(), "--produce-models".into()],
             },
             Ok(SMTSolver::CVC5) => SolverConfig {
                 cmd: cmd.into(),
-                args: vec!["--lang".into(), "smt2".into()],
+                args: vec!["--lang".into(), "smt2".into(), "--produce-models".into()],
             },
             _ => panic!(),
         }
