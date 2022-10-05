@@ -22,9 +22,9 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
     - name: Install Dependencies
-      run: wget -c https://github.com/cvc5/cvc5/releases/download/cvc5-1.0.2/cvc5-Linux && sudo mv ./cvc5-Linux /usr/bin/cvc5 && chmod +x /usr/bin/cvc5
+      run: wget -q -c https://github.com/cvc5/cvc5/releases/download/cvc5-1.0.2/cvc5-Linux && sudo mv ./cvc5-Linux /usr/bin/cvc5 && chmod +x /usr/bin/cvc5
     - name: Build
       run: cargo build --verbose
     - name: Run tests
