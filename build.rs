@@ -36,7 +36,7 @@ fn write_test(test_file: &mut File, file: &DirEntry) {
 
         write!(
             test_file,
-            include_str!("./tests/test_assert_pass.tmpl"),
+            include_str!("./tests/assert_pass/test.tmpl"),
             name = test_name,
             test_file = file.path().canonicalize().unwrap().display(),
         )
