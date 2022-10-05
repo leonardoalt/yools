@@ -34,7 +34,7 @@ OPTIONS:
     -h, --help                         Print help information
     -i, --input <FILE.yul>             Yul source file
     -l, --loop-unroll <LOOP_UNROLL>    Loop unrolling limit [default: 10]
-    -s, --solver <SOLVER>              SMT solver [default: cvc4]
+    -s, --solver <SOLVER>              SMT solver [default: cvc5]
 ```
 
 Toy example:

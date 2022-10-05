@@ -50,7 +50,7 @@ fn symbolic_subcommand() -> App<'static> {
                 .help("SMT solver")
                 .value_name("SOLVER")
                 .takes_value(true)
-                .default_value("cvc4")
+                .default_value("cvc5")
                 .required(false),
         )
         .arg(
