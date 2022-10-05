@@ -117,6 +117,30 @@ fn test_assert_pass(content: &str, file: &str) {
 
 include!(concat!(env!("OUT_DIR"), "/test_assert_pass.rs"));
 
+// This function is called from tests constructed at build time
+// and included below.
+// build.rs creates one test per .yul file in the some_revert_reachable directory.
+fn test_some_revert_reachable(content: &str, file: &str) {
+    match yul_parser::parse_block(content) {
+        Err(err) => {
+            assert!(false, "Parse error in file {file}:\n{err}")
+        }
+        Ok(mut ast) => {
+            yultsur::resolver::resolve::<EVMInstructions>(&mut ast).expect("Resolving error.");
+
+            let query = encoder::encode_revert_unreachable::<EVMInstructions>(
+                &ast,
+                loop_unroll_default(content),
+                &[],
+            )
+            .0;
+            sat(&query, file);
+        }
+    }
+}
+
+include!(concat!(env!("OUT_DIR"), "/test_some_revert_reachable.rs"));
+
 fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
     let dir = Path::new(test_dir);
     assert!(dir.is_dir());
@@ -197,6 +221,15 @@ fn unsat(query: &String, file: &str) {
     assert!(
         !solver::query_smt(query),
         "\n--------------------\n{} FAILED\n--------------------\nShould be UNSAT. Query:\n{}",
+        file,
+        query
+    );
+}
+
+fn sat(query: &String, file: &str) {
+    assert!(
+        solver::query_smt(query),
+        "\n--------------------\n{} FAILED\n--------------------\nShould be SAT. Query:\n{}",
         file,
         query
     );

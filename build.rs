@@ -12,7 +12,7 @@ use std::path::Path;
  */
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
-    for dir_name in ["assert_pass"] {
+    for dir_name in ["assert_pass", "some_revert_reachable"] {
         let destination = Path::new(&out_dir).join(format!("test_{dir_name}.rs"));
         let mut test_file = File::create(&destination).unwrap();
 
