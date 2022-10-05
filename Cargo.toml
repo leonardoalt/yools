@@ -10,3 +10,4 @@ yultsur = { git = "https://github.com/leonardoalt/yultsur", branch = "main" }
 num-bigint = "^0.4.3"
 tempfile = "3"
 clap = "^3.2"
+num-traits = "^0.2.15"

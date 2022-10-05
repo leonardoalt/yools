@@ -42,16 +42,28 @@ pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
         .join("\n")
 }
 
-pub fn encode_revert_unreachable<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
+pub fn encode_revert_unreachable<T: Instructions>(
+    ast: &Block,
+    loop_unroll: u64,
+    counterexamples: &[Expression],
+) -> (String, Vec<String>) {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
     encoder.encode_revert_unreachable();
-    encoder
-        .output
+
+    let encoded_counterexamples = counterexamples
         .iter()
-        .map(|s| s.as_smt())
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|expr| encoder.encode_expression(expr).pop().unwrap().name)
+        .collect::<Vec<_>>();
+    (
+        encoder
+            .output
+            .iter()
+            .map(|s| s.as_smt())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        encoded_counterexamples,
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
