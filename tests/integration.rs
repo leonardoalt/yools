@@ -98,8 +98,7 @@ fn loop_unroll_default(source: &str) -> u64 {
 
 // This function is called from tests constructed at build time
 // and included below.
-// build.rs creates one test per .yul file in the assert_pass directory
-// using the template file assert_pass/test.tmpl
+// build.rs creates one test per .yul file in the assert_pass directory.
 fn test_assert_pass(content: &str, file: &str) {
     match yul_parser::parse_block(content) {
         Err(err) => {
