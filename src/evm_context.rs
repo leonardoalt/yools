@@ -120,6 +120,11 @@ fn context() -> ContextVariables {
     ContextVariables::default()
 }
 
+pub struct MemoryRange {
+    pub offset: SMTExpr,
+    pub length: SMTExpr,
+}
+
 pub fn set_reverted(ssa: &mut SSATracker) -> SMTStatement {
     assign_variable_if_executing_regularly(ssa, &context().revert_flag.identifier, 1.into())
 }
@@ -207,21 +212,25 @@ pub fn mload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     smt::concat(arguments)
 }
 
-pub fn keccak256(offset: SMTExpr, length: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
-    let offset_0 = mload(offset.clone(), ssa);
-    let offset_32 = mload(smt::bvadd(offset.clone(), 0x20), ssa);
+pub fn keccak256(input: MemoryRange, ssa: &mut SSATracker) -> SMTExpr {
+    let offset_0 = mload(input.offset.clone(), ssa);
+    let offset_32 = mload(smt::bvadd(input.offset.clone(), 0x20), ssa);
     smt::ite(
-        smt::eq(length.clone(), 0x20),
+        smt::eq(input.length.clone(), 0x20),
         smt::uf(context().keccak256_32.smt_var(ssa), vec![offset_0.clone()]),
         smt::ite(
-            smt::eq(length.clone(), 0x40),
+            smt::eq(input.length.clone(), 0x40),
             smt::uf(
                 context().keccak256_64.smt_var(ssa),
                 vec![offset_0, offset_32],
             ),
             smt::uf(
                 context().keccak256.smt_var(ssa),
-                vec![context().memory.smt_var(ssa).into(), offset, length],
+                vec![
+                    context().memory.smt_var(ssa).into(),
+                    input.offset,
+                    input.length,
+                ],
             ),
         ),
     )

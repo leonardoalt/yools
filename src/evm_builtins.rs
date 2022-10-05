@@ -1,5 +1,6 @@
 use crate::encoder::Instructions;
 use crate::evm_context;
+use crate::evm_context::MemoryRange;
 use crate::smt::{self, SMTExpr, SMTOp, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 use yultsur::dialect::{Builtin, Dialect, EVMDialect};
@@ -76,8 +77,10 @@ impl Instructions for EVMInstructions {
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "keccak256" => single_return(evm_context::keccak256(
-                arg_0.unwrap().into(),
-                arg_1.unwrap().into(),
+                MemoryRange {
+                    offset: arg_0.unwrap().into(),
+                    length: arg_1.unwrap().into(),
+                },
                 ssa,
             )),
             "address" => single_return(evm_context::address(ssa).into()),
