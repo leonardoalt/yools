@@ -17,14 +17,14 @@ pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
             }
         })
         .collect::<Vec<_>>();
-    // TODO memory is zero initially.
 
-    // TODO assert that calldata[i] = 0 for i >= calldatasize
     let address = context().address.smt_var(ssa);
     output.push(smt::assert(smt::eq(
         smt::extract(255, 160, address),
         smt::literal_12_bytes(0),
     )));
+
+    output.push(smt::assert(smt::bvule(calldatasize(ssa), u64::MAX)));
 
     output
 }
@@ -179,7 +179,16 @@ pub fn basefee(ssa: &mut SSATracker) -> SMTVariable {
 pub fn calldataload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     let calldata = context().calldata.smt_var(ssa);
     let arguments = (0..32)
-        .map(|i| smt::uf(calldata.clone(), vec![smt::bvadd(index.clone(), i)]))
+        .map(|i| {
+            // TODO this could benefit from let expressions.
+            // We are repeating the expression that computes the index.
+            let sub_index = smt::bvadd(index.clone(), i);
+            smt::ite(
+                smt::bvult(sub_index.clone(), calldatasize(ssa)),
+                smt::uf(calldata.clone(), vec![sub_index]),
+                smt::literal_1_byte(0),
+            )
+        })
         .collect::<Vec<_>>();
     smt::concat(arguments)
 }
