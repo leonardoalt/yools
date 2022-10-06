@@ -68,6 +68,7 @@ pub enum SMTOp {
     And,
     Or,
     Ite,
+    Implies,
     BvNot,
     BvAnd,
     BvOr,
@@ -166,6 +167,16 @@ pub fn ite<C: Into<SMTExpr>, T: Into<SMTExpr>, F: Into<SMTExpr>>(
     SMTExpr {
         op: SMTOp::Ite,
         args: vec![cond.into(), true_term.into(), false_term.into()],
+    }
+}
+
+pub fn implies<C: Into<SMTExpr>, T: Into<SMTExpr>, F: Into<SMTExpr>>(
+    premise: impl Into<SMTExpr>,
+    conclusion: impl Into<SMTExpr>,
+) -> SMTExpr {
+    SMTExpr {
+        op: SMTOp::Implies,
+        args: vec![premise.into(), conclusion.into()],
     }
 }
 
@@ -456,6 +467,10 @@ impl SMTFormat for SMTExpr {
                     self.args[1].as_smt(),
                     self.args[2].as_smt()
                 )
+            }
+            SMTOp::Implies => {
+                assert!(self.args.len() == 2);
+                format!("(=> {} {})", self.args[0].as_smt(), self.args[1].as_smt(),)
             }
             SMTOp::BvNot => {
                 assert!(self.args.len() == 1);
