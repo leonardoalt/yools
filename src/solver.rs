@@ -46,10 +46,7 @@ pub fn query_smt_with_solver_and_eval(
 ) -> (bool, Vec<ModelValue>) {
     let mut sat_query = format!("{query}\n(check-sat)\n");
     if !exprs_to_eval.is_empty() {
-        sat_query = format!(
-            "(set-option :produce-models true)\n{sat_query}(get-value ({}))\n",
-            &exprs_to_eval.join(" ")
-        )
+        sat_query = format!("{sat_query}(get-value ({}))\n", &exprs_to_eval.join(" "))
     }
     let (output, stderr) = query_smt_internal(&sat_query, solver);
     let lines = output
