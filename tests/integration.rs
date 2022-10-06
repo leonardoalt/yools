@@ -50,11 +50,6 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
 }
 
 #[test]
-fn test_revert_unreachable() {
-    test_dir("./tests/revert_unreachable", test_file_revert_unreachable);
-}
-
-#[test]
 fn test_syntax() {
     test_dir(
         "./tests/syntax",
@@ -96,50 +91,85 @@ fn loop_unroll_default(source: &str) -> u64 {
     loop_unroll(source).unwrap_or(10)
 }
 
-// This function is called from tests constructed at build time
-// and included below.
-// build.rs creates one test per .yul file in the assert_pass directory.
-fn test_assert_pass(content: &str, file: &str) {
-    match yul_parser::parse_block(content) {
-        Err(err) => {
-            assert!(false, "Parse error in file {file}:\n{err}")
-        }
-        Ok(mut ast) => {
-            yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast)
-                .expect("Resolving error.");
+mod assert_pass {
+    use super::*;
+    // This function is called from tests constructed at build time
+    // and included below.
+    // build.rs creates one test per .yul file in the assert_pass directory.
+    fn test_assert_pass(content: &str, file: &str) {
+        match yul_parser::parse_block(content) {
+            Err(err) => {
+                assert!(false, "Parse error in file {file}:\n{err}")
+            }
+            Ok(mut ast) => {
+                yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast)
+                    .expect("Resolving error.");
 
-            let query =
-                encoder::encode::<EVMInstructionsWithAssert>(&ast, loop_unroll_default(content));
-            unsat(&query, file);
-        }
-    }
-}
-
-include!(concat!(env!("OUT_DIR"), "/test_assert_pass.rs"));
-
-// This function is called from tests constructed at build time
-// and included below.
-// build.rs creates one test per .yul file in the some_revert_reachable directory.
-fn test_some_revert_reachable(content: &str, file: &str) {
-    match yul_parser::parse_block(content) {
-        Err(err) => {
-            assert!(false, "Parse error in file {file}:\n{err}")
-        }
-        Ok(mut ast) => {
-            yultsur::resolver::resolve::<EVMInstructions>(&mut ast).expect("Resolving error.");
-
-            let query = encoder::encode_revert_unreachable::<EVMInstructions>(
-                &ast,
-                loop_unroll_default(content),
-                &[],
-            )
-            .0;
-            sat(&query, file);
+                let query = encoder::encode::<EVMInstructionsWithAssert>(
+                    &ast,
+                    loop_unroll_default(content),
+                );
+                unsat(&query, file);
+            }
         }
     }
+
+    include!(concat!(env!("OUT_DIR"), "/test_assert_pass.rs"));
 }
 
-include!(concat!(env!("OUT_DIR"), "/test_some_revert_reachable.rs"));
+mod some_revert_reachable {
+    use super::*;
+    // This function is called from tests constructed at build time
+    // and included below.
+    // build.rs creates one test per .yul file in the some_revert_reachable directory.
+    fn test_some_revert_reachable(content: &str, file: &str) {
+        match yul_parser::parse_block(content) {
+            Err(err) => {
+                assert!(false, "Parse error in file {file}:\n{err}")
+            }
+            Ok(mut ast) => {
+                yultsur::resolver::resolve::<EVMInstructions>(&mut ast).expect("Resolving error.");
+
+                let query = encoder::encode_revert_unreachable::<EVMInstructions>(
+                    &ast,
+                    loop_unroll_default(content),
+                    &[],
+                )
+                .0;
+                sat(&query, file);
+            }
+        }
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/test_some_revert_reachable.rs"));
+}
+
+mod revert_unreachable {
+    use super::*;
+    // This function is called from tests constructed at build time
+    // and included below.
+    // build.rs creates one test per .yul file in the revert_unreachable directory.
+    fn test_revert_unreachable(content: &str, file: &str) {
+        match yul_parser::parse_block(content) {
+            Err(err) => {
+                assert!(false, "Parse error in file {file}:\n{err}")
+            }
+            Ok(mut ast) => {
+                yultsur::resolver::resolve::<EVMInstructionsWithAssert>(&mut ast)
+                    .expect("Resolving error.");
+
+                let (query, _) = encoder::encode_revert_unreachable::<EVMInstructions>(
+                    &ast,
+                    loop_unroll_default(&content),
+                    &[],
+                );
+                unsat(&query, file);
+            }
+        }
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/test_revert_unreachable.rs"));
+}
 
 fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
     let dir = Path::new(test_dir);
@@ -148,28 +178,6 @@ fn test_dir(test_dir: &str, test_file_fn: fn(&str)) {
         let path = entry.unwrap().path();
         if path.extension().unwrap() == "yul" {
             test_file_fn(path.to_str().unwrap());
-        }
-    }
-}
-
-fn test_file_revert_unreachable(test_file: &str) {
-    assert!(Path::new(&test_file).exists());
-
-    let content = fs::read_to_string(&test_file).expect("I need to read this file.");
-
-    match yul_parser::parse_block(&content) {
-        Err(err) => {
-            assert!(false, "Parse error in file {test_file}:\n{err}")
-        }
-        Ok(mut ast) => {
-            yultsur::resolver::resolve::<dialect::EVMDialect>(&mut ast).expect("Resolving error.");
-
-            let (query, _) = encoder::encode_revert_unreachable::<EVMInstructions>(
-                &ast,
-                loop_unroll_default(&content),
-                &[],
-            );
-            unsat(&query, test_file);
         }
     }
 }
