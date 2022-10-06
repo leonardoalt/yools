@@ -170,10 +170,7 @@ pub fn ite<C: Into<SMTExpr>, T: Into<SMTExpr>, F: Into<SMTExpr>>(
     }
 }
 
-pub fn implies<C: Into<SMTExpr>, T: Into<SMTExpr>, F: Into<SMTExpr>>(
-    premise: impl Into<SMTExpr>,
-    conclusion: impl Into<SMTExpr>,
-) -> SMTExpr {
+pub fn implies(premise: impl Into<SMTExpr>, conclusion: impl Into<SMTExpr>) -> SMTExpr {
     SMTExpr {
         op: SMTOp::Implies,
         args: vec![premise.into(), conclusion.into()],
