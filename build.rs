@@ -12,16 +12,18 @@ use std::path::Path;
  */
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
-    let destination = Path::new(&out_dir).join("test_assert_pass.rs");
-    let mut test_file = File::create(&destination).unwrap();
+    for dir_name in ["assert_pass", "revert_unreachable", "some_revert_reachable"] {
+        let destination = Path::new(&out_dir).join(format!("test_{dir_name}.rs"));
+        let mut test_file = File::create(&destination).unwrap();
 
-    // TODO recursion
-    for directory in read_dir("./tests/assert_pass/").unwrap() {
-        write_test(&mut test_file, &directory.unwrap());
+        // TODO recursion
+        for file in read_dir(format!("./tests/{dir_name}/")).unwrap() {
+            write_test(&mut test_file, &file.unwrap(), dir_name);
+        }
     }
 }
 
-fn write_test(test_file: &mut File, file: &DirEntry) {
+fn write_test(test_file: &mut File, file: &DirEntry, test_directory: &str) {
     if let Some(file_name) = file
         .file_name()
         .to_str()
@@ -36,8 +38,10 @@ fn write_test(test_file: &mut File, file: &DirEntry) {
 
         write!(
             test_file,
-            include_str!("./tests/test_assert_pass.tmpl"),
-            name = test_name,
+            r#"#[test]
+fn {test_name}() {{
+    test_{test_directory}(include_str!("{test_file}"), "{test_file}");
+}}"#,
             test_file = file.path().canonicalize().unwrap().display(),
         )
         .unwrap();
