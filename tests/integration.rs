@@ -35,13 +35,13 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         path_conditions: &[SMTExpr],
-    ) -> SMTStatement {
+    ) -> Vec<SMTStatement> {
         match builtin.name {
-            "assert" => smt::assert(smt::and_vec(vec![
+            "assert" => vec![smt::assert(smt::and_vec(vec![
                 evm_context::executing_regularly(ssa),
                 smt::and_vec(path_conditions.to_vec().clone()),
                 smt::eq_zero(arguments.into_iter().next().unwrap()),
-            ])),
+            ]))],
             _ => self
                 .0
                 .encode_builtin_call(builtin, arguments, return_vars, ssa, path_conditions),

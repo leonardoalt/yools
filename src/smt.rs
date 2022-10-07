@@ -393,6 +393,14 @@ pub fn literal_false() -> SMTExpr {
     literal_bool("false".to_string())
 }
 
+pub fn extract_msb_12_bytes(expr: impl Into<SMTExpr>) -> SMTExpr {
+    extract(255, 160, expr)
+}
+
+pub fn cleanup_msb_12_bytes(expr: impl Into<SMTExpr>) -> SMTExpr {
+    eq(extract_msb_12_bytes(expr), literal_12_bytes(0))
+}
+
 // SMT statement builders
 
 pub fn assert(expr: SMTExpr) -> SMTStatement {

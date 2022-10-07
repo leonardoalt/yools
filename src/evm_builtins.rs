@@ -22,10 +22,13 @@ impl Instructions for EVMInstructions {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         _path_conditions: &[SMTExpr],
-    ) -> SMTStatement {
+    ) -> Vec<SMTStatement> {
         let single_return = |value: SMTExpr| {
             assert_eq!(return_vars.len(), 1);
-            smt::define_const(return_vars.first().unwrap().clone(), value)
+            vec![smt::define_const(
+                return_vars.first().unwrap().clone(),
+                value,
+            )]
         };
         let direct = |smt_op: SMTOp| {
             let smt_encoding = SMTExpr {
@@ -41,9 +44,14 @@ impl Instructions for EVMInstructions {
         let mut it = arguments.clone().into_iter();
         let arg_0 = it.next();
         let arg_1 = it.next();
+        let arg_2 = it.next();
+        let arg_3 = it.next();
+        let arg_4 = it.next();
+        let arg_5 = it.next();
+        let arg_6 = it.next();
 
         match builtin.name {
-            "stop" => evm_context::set_stopped(ssa),
+            "stop" => vec![evm_context::set_stopped(ssa)],
             "add" => direct(SMTOp::BvAdd),
             "sub" => direct(SMTOp::BvSub),
             "mul" => direct(SMTOp::BvMul),
@@ -77,10 +85,7 @@ impl Instructions for EVMInstructions {
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "keccak256" => single_return(evm_context::keccak256(
-                MemoryRange {
-                    offset: arg_0.unwrap().into(),
-                    length: arg_1.unwrap().into(),
-                },
+                MemoryRange::new(arg_0.unwrap(), arg_1.unwrap()),
                 ssa,
             )),
             "address" => single_return(evm_context::address(ssa).into()),
@@ -106,14 +111,26 @@ impl Instructions for EVMInstructions {
             "difficulty" => single_return(evm_context::difficulty(ssa).into()),
             "gaslimit" => single_return(evm_context::gaslimit(ssa).into()),
             "chainid" => single_return(evm_context::chainid(ssa).into()),
-            "selfbalance" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "selfbalance" => single_return(evm_context::selfbalance(ssa).into()),
             "basefee" => single_return(evm_context::basefee(ssa).into()),
             "pop" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "mload" => single_return(evm_context::mload(arg_0.unwrap().into(), ssa)),
-            "mstore" => evm_context::mstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
-            "mstore8" => evm_context::mstore8(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
+            "mstore" => vec![evm_context::mstore(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
+            "mstore8" => vec![evm_context::mstore8(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
             "sload" => single_return(evm_context::sload(arg_0.unwrap().into(), ssa)),
-            "sstore" => evm_context::sstore(arg_0.unwrap().into(), arg_1.unwrap().into(), ssa),
+            "sstore" => vec![evm_context::sstore(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                ssa,
+            )],
             "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "gas" => panic!("Builtin {} not implemented", builtin.name),   // TODO
             "log0" => panic!("Builtin {} not implemented", builtin.name),  // TODO
@@ -121,18 +138,55 @@ impl Instructions for EVMInstructions {
             "log2" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "log3" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "log4" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "create" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "call" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "callcode" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "return" => evm_context::set_stopped(ssa),                     // TODO store returndata
-            "delegatecall" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "staticcall" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "create2" =>
-            /* TODO handle potential storage changes */
-            {
-                panic!("Builtin {} not implemented", builtin.name)
-            } // TODO
-            "revert" => evm_context::set_reverted(ssa),
+            "create" => evm_context::create(
+                arg_0.unwrap().into(),
+                MemoryRange::new(arg_1.unwrap(), arg_2.unwrap()),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "call" => evm_context::call(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                arg_2.unwrap().into(),
+                MemoryRange::new(arg_3.unwrap(), arg_4.unwrap()),
+                MemoryRange::new(arg_5.unwrap(), arg_6.unwrap()),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "callcode" => evm_context::callcode(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                arg_2.unwrap().into(),
+                MemoryRange::new(arg_3.unwrap(), arg_4.unwrap()),
+                MemoryRange::new(arg_5.unwrap(), arg_6.unwrap()),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "return" => vec![evm_context::set_stopped(ssa)], // TODO store returndata
+            "delegatecall" => evm_context::delegatecall(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                MemoryRange::new(arg_2.unwrap(), arg_3.unwrap()),
+                MemoryRange::new(arg_4.unwrap(), arg_5.unwrap()),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "staticcall" => evm_context::staticcall(
+                arg_0.unwrap().into(),
+                arg_1.unwrap().into(),
+                MemoryRange::new(arg_2.unwrap(), arg_3.unwrap()),
+                MemoryRange::new(arg_4.unwrap(), arg_5.unwrap()),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "create2" => evm_context::create2(
+                arg_0.unwrap().into(),
+                MemoryRange::new(arg_1.unwrap(), arg_2.unwrap()),
+                arg_3.unwrap().into(),
+                return_vars.first().unwrap(),
+                ssa,
+            ),
+            "revert" => vec![evm_context::set_reverted(ssa)],
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
 

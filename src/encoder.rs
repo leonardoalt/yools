@@ -17,7 +17,7 @@ pub trait Instructions: Default + Dialect {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         path_conditions: &[SMTExpr],
-    ) -> SMTStatement;
+    ) -> Vec<SMTStatement>;
 }
 
 #[derive(Default)]
@@ -318,7 +318,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     &mut self.ssa_tracker,
                     &self.path_conditions,
                 );
-                self.out(result);
+                self.out_vec(result);
                 return_vars
             }
             IdentifierID::Reference(id) => {

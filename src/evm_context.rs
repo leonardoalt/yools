@@ -19,10 +19,7 @@ pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
         .collect::<Vec<_>>();
 
     let address = context().address.smt_var(ssa);
-    output.push(smt::assert(smt::eq(
-        smt::extract(255, 160, address),
-        smt::literal_12_bytes(0),
-    )));
+    output.push(smt::assert(smt::cleanup_msb_12_bytes(address)));
 
     output.push(smt::assert(smt::bvule(calldatasize(ssa), u64::MAX)));
 
@@ -105,6 +102,7 @@ context_variables! {
     number: Type::Default; None,
     origin: Type::Default; None,
     timestamp: Type::Default; None,
+    selfbalance: Type::Default; None,
     memory: Type::Constant(smt::array(smt::bv(256), smt::bv(8))); Some(smt::as_const(smt::array(smt::bv(256), smt::bv(8)), smt::literal_1_byte(0))),
     storage: Type::Constant(smt::array(smt::bv(256), smt::bv(256))); None,
     calldata: Type::Function(vec![smt::bv(256)], smt::bv(8)); None,
@@ -123,6 +121,15 @@ fn context() -> ContextVariables {
 pub struct MemoryRange {
     pub offset: SMTExpr,
     pub length: SMTExpr,
+}
+
+impl MemoryRange {
+    pub fn new(offset: impl Into<SMTExpr>, length: impl Into<SMTExpr>) -> Self {
+        Self {
+            offset: offset.into(),
+            length: length.into(),
+        }
+    }
 }
 
 pub fn set_reverted(ssa: &mut SSATracker) -> SMTStatement {
@@ -174,6 +181,9 @@ pub fn chainid(ssa: &mut SSATracker) -> SMTVariable {
 }
 pub fn basefee(ssa: &mut SSATracker) -> SMTVariable {
     context().basefee.smt_var(ssa)
+}
+pub fn selfbalance(ssa: &mut SSATracker) -> SMTVariable {
+    context().selfbalance.smt_var(ssa)
 }
 
 pub fn calldataload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
@@ -255,6 +265,140 @@ pub fn sstore(index: SMTExpr, value: SMTExpr, ssa: &mut SSATracker) -> SMTStatem
 
 pub fn sload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     smt::select(context().storage.smt_var(ssa), index)
+}
+
+pub fn create(
+    _value: SMTExpr,
+    _input: MemoryRange,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        vec![
+            smt::declare_const(return_var.clone()),
+            smt::assert(smt::cleanup_msb_12_bytes(return_var.clone())),
+        ],
+        nonstatic_call_happened(return_var, ssa),
+    ]
+    .concat()
+}
+
+pub fn create2(
+    _value: SMTExpr,
+    _input: MemoryRange,
+    _seed: SMTExpr,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        nonstatic_call_happened(return_var, ssa),
+        vec![smt::assert(smt::cleanup_msb_12_bytes(return_var.clone()))],
+    ]
+    .concat()
+}
+
+pub fn call(
+    _gas: SMTExpr,
+    _address: SMTExpr,
+    _value: SMTExpr,
+    _input: MemoryRange,
+    output: MemoryRange,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        declare_zero_or_one(return_var),
+        nonstatic_call_happened(return_var, ssa),
+        unknown_memory_write(output, ssa),
+    ]
+    .concat()
+}
+
+pub fn callcode(
+    _gas: SMTExpr,
+    _address: SMTExpr,
+    _value: SMTExpr,
+    _input: MemoryRange,
+    output: MemoryRange,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        declare_zero_or_one(return_var),
+        nonstatic_call_happened(return_var, ssa),
+        unknown_memory_write(output, ssa),
+    ]
+    .concat()
+}
+
+pub fn delegatecall(
+    _gas: SMTExpr,
+    _address: SMTExpr,
+    _input: MemoryRange,
+    output: MemoryRange,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        declare_zero_or_one(return_var),
+        nonstatic_call_happened(return_var, ssa),
+        unknown_memory_write(output, ssa),
+    ]
+    .concat()
+}
+
+pub fn staticcall(
+    _gas: SMTExpr,
+    _address: SMTExpr,
+    _input: MemoryRange,
+    output: MemoryRange,
+    return_var: &SMTVariable,
+    ssa: &mut SSATracker,
+) -> Vec<SMTStatement> {
+    [
+        declare_zero_or_one(return_var),
+        static_call_happened(ssa),
+        unknown_memory_write(output, ssa),
+    ]
+    .concat()
+}
+
+/// Model an unknown write to a section of memory.
+/// Currently makes all of memory unknown if the length is nonzero.
+#[must_use]
+fn unknown_memory_write(location: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    ssa.havoc_unless(&context().memory.identifier, smt::eq_zero(location.length))
+}
+
+#[must_use]
+fn static_call_happened(_ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    // TODO returndatasize, returndatacopy
+    vec![]
+}
+
+#[must_use]
+fn nonstatic_call_happened(return_var: &SMTVariable, ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    [
+        static_call_happened(ssa),
+        // extcodesize, balance, etc
+        ssa.havoc_unless(
+            &context().selfbalance.identifier,
+            smt::eq_zero(return_var.clone()),
+        ),
+        ssa.havoc_unless(
+            &context().storage.identifier,
+            smt::eq_zero(return_var.clone()),
+        ),
+    ]
+    .concat()
+}
+
+#[must_use]
+fn declare_zero_or_one(var: &SMTVariable) -> Vec<SMTStatement> {
+    vec![
+        smt::declare_const(var.clone()),
+        smt::assert(smt::bvult(var.clone(), 2)),
+    ]
 }
 
 pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> SMTStatement {
