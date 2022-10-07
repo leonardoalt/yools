@@ -19,10 +19,7 @@ pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
         .collect::<Vec<_>>();
 
     let address = context().address.smt_var(ssa);
-    output.push(smt::assert(smt::eq(
-        smt::extract(255, 160, address),
-        smt::literal_12_bytes(0),
-    )));
+    output.push(smt::assert(smt::cleanup_msb_12_bytes(address)));
 
     output.push(smt::assert(smt::bvule(calldatasize(ssa), u64::MAX)));
 
@@ -124,6 +121,15 @@ fn context() -> ContextVariables {
 pub struct MemoryRange {
     pub offset: SMTExpr,
     pub length: SMTExpr,
+}
+
+impl MemoryRange {
+    pub fn new(offset: impl Into<SMTExpr>, length: impl Into<SMTExpr>) -> Self {
+        Self {
+            offset: offset.into(),
+            length: length.into(),
+        }
+    }
 }
 
 pub fn set_reverted(ssa: &mut SSATracker) -> SMTStatement {
@@ -263,17 +269,14 @@ pub fn sload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
 
 pub fn create(
     _value: SMTExpr,
-    _input: &MemoryRange,
+    _input: MemoryRange,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
     [
         vec![
             smt::declare_const(return_var.clone()),
-            smt::assert(smt::eq(
-                smt::extract(255, 160, return_var.clone()),
-                smt::literal_12_bytes(0),
-            )),
+            smt::assert(smt::cleanup_msb_12_bytes(return_var.clone())),
         ],
         nonstatic_call_happened(return_var, ssa),
     ]
@@ -282,17 +285,14 @@ pub fn create(
 
 pub fn create2(
     _value: SMTExpr,
-    _input: &MemoryRange,
+    _input: MemoryRange,
     _seed: SMTExpr,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
     [
         nonstatic_call_happened(return_var, ssa),
-        vec![smt::assert(smt::eq(
-            smt::extract(255, 160, return_var.clone()),
-            smt::literal_12_bytes(0),
-        ))],
+        vec![smt::assert(smt::cleanup_msb_12_bytes(return_var.clone()))],
     ]
     .concat()
 }
@@ -301,8 +301,8 @@ pub fn call(
     _gas: SMTExpr,
     _address: SMTExpr,
     _value: SMTExpr,
-    _input: &MemoryRange,
-    output: &MemoryRange,
+    _input: MemoryRange,
+    output: MemoryRange,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
@@ -318,8 +318,8 @@ pub fn callcode(
     _gas: SMTExpr,
     _address: SMTExpr,
     _value: SMTExpr,
-    _input: &MemoryRange,
-    output: &MemoryRange,
+    _input: MemoryRange,
+    output: MemoryRange,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
@@ -334,8 +334,8 @@ pub fn callcode(
 pub fn delegatecall(
     _gas: SMTExpr,
     _address: SMTExpr,
-    _input: &MemoryRange,
-    output: &MemoryRange,
+    _input: MemoryRange,
+    output: MemoryRange,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
@@ -350,8 +350,8 @@ pub fn delegatecall(
 pub fn staticcall(
     _gas: SMTExpr,
     _address: SMTExpr,
-    _input: &MemoryRange,
-    output: &MemoryRange,
+    _input: MemoryRange,
+    output: MemoryRange,
     return_var: &SMTVariable,
     ssa: &mut SSATracker,
 ) -> Vec<SMTStatement> {
@@ -366,11 +366,8 @@ pub fn staticcall(
 /// Model an unknown write to a section of memory.
 /// Currently makes all of memory unknown if the length is nonzero.
 #[must_use]
-fn unknown_memory_write(location: &MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
-    ssa.havoc_unless(
-        &context().memory.identifier,
-        smt::eq_zero(location.length.clone()),
-    )
+fn unknown_memory_write(location: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    ssa.havoc_unless(&context().memory.identifier, smt::eq_zero(location.length))
 }
 
 #[must_use]

@@ -44,6 +44,11 @@ impl Instructions for EVMInstructions {
         let mut it = arguments.clone().into_iter();
         let arg_0 = it.next();
         let arg_1 = it.next();
+        let arg_2 = it.next();
+        let arg_3 = it.next();
+        let arg_4 = it.next();
+        let arg_5 = it.next();
+        let arg_6 = it.next();
 
         match builtin.name {
             "stop" => vec![evm_context::set_stopped(ssa)],
@@ -80,10 +85,7 @@ impl Instructions for EVMInstructions {
             "mulmod" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "signextend" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "keccak256" => single_return(evm_context::keccak256(
-                MemoryRange {
-                    offset: arg_0.unwrap().into(),
-                    length: arg_1.unwrap().into(),
-                },
+                MemoryRange::new(arg_0.unwrap(), arg_1.unwrap()),
                 ssa,
             )),
             "address" => single_return(evm_context::address(ssa).into()),
@@ -138,40 +140,25 @@ impl Instructions for EVMInstructions {
             "log4" => panic!("Builtin {} not implemented", builtin.name),  // TODO
             "create" => evm_context::create(
                 arg_0.unwrap().into(),
-                &MemoryRange {
-                    offset: arg_1.unwrap().into(),
-                    length: arguments[2].clone().into(),
-                },
+                MemoryRange::new(arg_1.unwrap(), arg_2.unwrap()),
                 return_vars.first().unwrap(),
                 ssa,
             ),
             "call" => evm_context::call(
                 arg_0.unwrap().into(),
                 arg_1.unwrap().into(),
-                arguments[2].clone().into(),
-                &MemoryRange {
-                    offset: arguments[3].clone().into(),
-                    length: arguments[4].clone().into(),
-                },
-                &MemoryRange {
-                    offset: arguments[5].clone().into(),
-                    length: arguments[6].clone().into(),
-                },
+                arg_2.unwrap().into(),
+                MemoryRange::new(arg_3.unwrap(), arg_4.unwrap()),
+                MemoryRange::new(arg_5.unwrap(), arg_6.unwrap()),
                 return_vars.first().unwrap(),
                 ssa,
             ),
             "callcode" => evm_context::callcode(
                 arg_0.unwrap().into(),
                 arg_1.unwrap().into(),
-                arguments[2].clone().into(),
-                &MemoryRange {
-                    offset: arguments[3].clone().into(),
-                    length: arguments[4].clone().into(),
-                },
-                &MemoryRange {
-                    offset: arguments[5].clone().into(),
-                    length: arguments[6].clone().into(),
-                },
+                arg_2.unwrap().into(),
+                MemoryRange::new(arg_3.unwrap(), arg_4.unwrap()),
+                MemoryRange::new(arg_5.unwrap(), arg_6.unwrap()),
                 return_vars.first().unwrap(),
                 ssa,
             ),
@@ -179,38 +166,23 @@ impl Instructions for EVMInstructions {
             "delegatecall" => evm_context::delegatecall(
                 arg_0.unwrap().into(),
                 arg_1.unwrap().into(),
-                &MemoryRange {
-                    offset: arguments[2].clone().into(),
-                    length: arguments[3].clone().into(),
-                },
-                &MemoryRange {
-                    offset: arguments[4].clone().into(),
-                    length: arguments[5].clone().into(),
-                },
+                MemoryRange::new(arg_2.unwrap(), arg_3.unwrap()),
+                MemoryRange::new(arg_4.unwrap(), arg_5.unwrap()),
                 return_vars.first().unwrap(),
                 ssa,
             ),
             "staticcall" => evm_context::staticcall(
                 arg_0.unwrap().into(),
                 arg_1.unwrap().into(),
-                &MemoryRange {
-                    offset: arguments[2].clone().into(),
-                    length: arguments[3].clone().into(),
-                },
-                &MemoryRange {
-                    offset: arguments[4].clone().into(),
-                    length: arguments[5].clone().into(),
-                },
+                MemoryRange::new(arg_2.unwrap(), arg_3.unwrap()),
+                MemoryRange::new(arg_4.unwrap(), arg_5.unwrap()),
                 return_vars.first().unwrap(),
                 ssa,
             ),
             "create2" => evm_context::create2(
                 arg_0.unwrap().into(),
-                &MemoryRange {
-                    offset: arg_1.unwrap().into(),
-                    length: arguments[2].clone().into(),
-                },
-                arguments[3].clone().into(),
+                MemoryRange::new(arg_1.unwrap(), arg_2.unwrap()),
+                arg_3.unwrap().into(),
                 return_vars.first().unwrap(),
                 ssa,
             ),
