@@ -17,6 +17,7 @@ pub trait Instructions: Default + Dialect {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         path_conditions: &[SMTExpr],
+        location: &Option<SourceLocation>,
     ) -> Vec<SMTStatement>;
 }
 
@@ -58,12 +59,14 @@ pub fn encode_solc_panic_unreachable<T: Instructions>(
     ast: &Block,
     loop_unroll: u64,
     counterexamples: &[Expression],
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, (String, String)) {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
     encoder.encode_solc_panic_unreachable();
+    let (revert_start, revert_end) = evm_context::revert_location(&mut encoder.ssa_tracker);
 
-    encode_with_counterexamples(encoder, counterexamples)
+    let (enc, cex) = encode_with_counterexamples(encoder, counterexamples);
+    (enc, cex, (revert_start.as_smt(), revert_end.as_smt()))
 }
 
 fn encode_with_counterexamples<T: Instructions>(
@@ -336,6 +339,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     &return_vars,
                     &mut self.ssa_tracker,
                     &self.path_conditions,
+                    &call.location,
                 );
                 self.out_vec(result);
                 return_vars

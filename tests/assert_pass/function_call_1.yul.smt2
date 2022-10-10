@@ -23,6 +23,8 @@
 (define-fun _revert_flag_2070_0 () (_ BitVec 256) #x0000000000000000000000000000000000000000000000000000000000000000)
 (declare-fun _revert_sig_4_2071_0 () (_ BitVec 32))
 (declare-fun _revert_data_32_2072_0 () (_ BitVec 256))
+(declare-fun _revert_source_location_start_2073_0 () (_ BitVec 256))
+(declare-fun _revert_source_location_end_2074_0 () (_ BitVec 256))
 (assert (= ((_ extract 255 160) _address_2048_0) #x000000000000000000000000))
 (assert (bvule _calldatasize_2050_0 #x000000000000000000000000000000000000000000000000ffffffffffffffff))
 (define-const _1 (_ BitVec 256) _address_2048_0)

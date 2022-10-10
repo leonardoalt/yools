@@ -90,7 +90,9 @@ context_variables! {
     stop_flag: Type::Default; Some(0.into()),
     revert_flag: Type::Default; Some(0.into()),
     revert_sig_4: Type::Constant(smt::bv(32)); None,
-    revert_data_32: Type::Constant(smt::bv(256)); None
+    revert_data_32: Type::Default; None,
+    revert_source_location_start: Type::Default; None,
+    revert_source_location_end: Type::Default; None
 }
 
 // TODO can we make this a global variable?
@@ -112,7 +114,11 @@ impl MemoryRange {
     }
 }
 
-pub fn revert(input: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
+pub fn revert(
+    input: MemoryRange,
+    ssa: &mut SSATracker,
+    location: SourceLocation,
+) -> Vec<SMTStatement> {
     let sig = smt::ite(
         smt::bvuge(input.length.clone(), 4),
         mload4(0.into(), ssa),
@@ -126,10 +132,27 @@ pub fn revert(input: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
     vec![
         assign_variable_if_executing_regularly(ssa, &context().revert_sig_4, sig),
         assign_variable_if_executing_regularly(ssa, &context().revert_data_32, data),
+        assign_variable_if_executing_regularly(
+            ssa,
+            &context().revert_source_location_start,
+            (location.start as u64).into(),
+        ),
+        assign_variable_if_executing_regularly(
+            ssa,
+            &context().revert_source_location_end,
+            (location.end as u64).into(),
+        ),
         // The order here is important: revert_flag is used to build the two expressions above,
         // so we can only change it after.
         assign_variable_if_executing_regularly(ssa, &context().revert_flag, 1.into()),
     ]
+}
+
+pub fn revert_location(ssa: &mut SSATracker) -> (SMTVariable, SMTVariable) {
+    (
+        context().revert_source_location_start.smt_var(ssa),
+        context().revert_source_location_end.smt_var(ssa),
+    )
 }
 
 pub fn set_stopped(ssa: &mut SSATracker) -> SMTStatement {

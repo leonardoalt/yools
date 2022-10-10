@@ -35,6 +35,7 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         path_conditions: &[SMTExpr],
+        location: &Option<yultsur::yul::SourceLocation>,
     ) -> Vec<SMTStatement> {
         match builtin.name {
             "assert" => vec![smt::assert(smt::and_vec(vec![
@@ -42,9 +43,14 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
                 smt::and_vec(path_conditions.to_vec().clone()),
                 smt::eq_zero(arguments.into_iter().next().unwrap()),
             ]))],
-            _ => self
-                .0
-                .encode_builtin_call(builtin, arguments, return_vars, ssa, path_conditions),
+            _ => self.0.encode_builtin_call(
+                builtin,
+                arguments,
+                return_vars,
+                ssa,
+                path_conditions,
+                location,
+            ),
         }
     }
 }
@@ -152,7 +158,7 @@ mod panic_unreachable {
     // build.rs creates one test per .yul file in the panic_unreachable directory.
     fn test_panic_unreachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
-        let (query, _) = encoder::encode_solc_panic_unreachable::<EVMInstructions>(
+        let (query, ..) = encoder::encode_solc_panic_unreachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(&content),
             &[],

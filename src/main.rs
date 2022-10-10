@@ -1,6 +1,8 @@
 use std::env;
 use std::path::PathBuf;
 
+use colored::Colorize;
+use num_traits::ToPrimitive;
 use yools::evm_builtins::EVMInstructions;
 use yools::solver;
 
@@ -104,16 +106,35 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
             Ok(expr)
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let (query, counterexamples_encoded) = yools::encoder::encode_solc_panic_unreachable::<
-        EVMInstructions,
-    >(&ast, loop_unroll, &counterexamples);
+    let (query, counterexamples_encoded, (revert_start, revert_end)) =
+        yools::encoder::encode_solc_panic_unreachable::<EVMInstructions>(
+            &ast,
+            loop_unroll,
+            &counterexamples,
+        );
 
+    let cex = [counterexamples_encoded, [revert_start, revert_end].to_vec()].concat();
     let solver = solver::SolverConfig::new(sub_matches.value_of("solver").unwrap());
-    let (result, values) =
-        solver::query_smt_with_solver_and_eval(&query, &counterexamples_encoded, solver);
+    let (result, mut values) = solver::query_smt_with_solver_and_eval(&query, &cex, solver);
     match result {
         true => {
-            println!("Revert is reachable.");
+            let revert_end = values.pop().unwrap();
+            let revert_start = values.pop().unwrap();
+            if let (solver::ModelValue::Number(start), solver::ModelValue::Number(end)) =
+                (revert_start, revert_end)
+            {
+                println!(
+                    "{}\n{}",
+                    "Panic is reachable:".bright_yellow(),
+                    format_source_snippet(
+                        &content,
+                        start.to_usize().unwrap(),
+                        end.to_usize().unwrap()
+                    )
+                );
+            } else {
+                println!("Panic is reachable.");
+            }
             if !eval_strings.is_empty() {
                 println!(
                     "Evaluated expressions:\n{}",
@@ -131,4 +152,62 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn format_source_snippet(source: &str, start: usize, end: usize) -> String {
+    let (start_line, start_col) = to_line_col(source, start);
+    let (end_line, end_col) = to_line_col(source, end);
+    if start_line == end_line {
+        let mut result = vec![];
+        let context = 3;
+        let line_nr_str = format!("{}", start_line + 1);
+        let skipped_lines = start_line.saturating_sub(context);
+        let lines = source.split('\n').skip(skipped_lines);
+        for l in lines.clone().take(start_line - skipped_lines) {
+            result.push(number_line(&space(line_nr_str.len()), l));
+        }
+        let mut lines = lines.skip(start_line - skipped_lines);
+        result.push(number_line(&line_nr_str, lines.next().unwrap()));
+        result.push(number_line(
+            &space(line_nr_str.len()),
+            &format!(
+                "{}{}",
+                space(start_col),
+                repeat('^', end_col - start_col).bright_yellow()
+            ),
+        ));
+        for l in lines.take(context) {
+            result.push(number_line(&space(line_nr_str.len()), l));
+        }
+        result.join("\n")
+    } else {
+        // TODO implement
+        String::new()
+    }
+}
+
+fn number_line(line_nr: &str, contents: &str) -> String {
+    format!(
+        "{} {}",
+        format!("{} {}", line_nr, "|").bright_blue(),
+        contents
+    )
+}
+
+fn space(len: usize) -> String {
+    repeat(' ', len)
+}
+
+fn repeat(c: char, len: usize) -> String {
+    std::iter::repeat(c).take(len).collect()
+}
+
+fn to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let line = source[..offset].chars().filter(|c| *c == '\n').count();
+    let col = source[..offset]
+        .chars()
+        .rev()
+        .position(|c| c == '\n')
+        .unwrap_or(offset);
+    (line, col)
 }

@@ -4,6 +4,7 @@ use crate::evm_context::MemoryRange;
 use crate::smt::{self, SMTExpr, SMTOp, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 use yultsur::dialect::{Builtin, Dialect, EVMDialect};
+use yultsur::yul::SourceLocation;
 
 #[derive(Default)]
 pub struct EVMInstructions;
@@ -22,6 +23,7 @@ impl Instructions for EVMInstructions {
         return_vars: &[SMTVariable],
         ssa: &mut SSATracker,
         _path_conditions: &[SMTExpr],
+        location: &Option<SourceLocation>,
     ) -> Vec<SMTStatement> {
         let single_return = |value: SMTExpr| {
             assert_eq!(return_vars.len(), 1);
@@ -192,6 +194,9 @@ impl Instructions for EVMInstructions {
                     length: arg_1.unwrap().into(),
                 },
                 ssa,
+                location
+                    .to_owned()
+                    .unwrap_or(SourceLocation { start: 0, end: 0 }),
             ),
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
