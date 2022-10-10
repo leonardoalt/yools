@@ -153,9 +153,13 @@ pub fn or<L: Into<SMTExpr>, R: Into<SMTExpr>>(lhs: L, rhs: R) -> SMTExpr {
 }
 
 pub fn or_vec(args: Vec<SMTExpr>) -> SMTExpr {
-    SMTExpr {
-        op: SMTOp::Or,
-        args,
+    match args.len() {
+        0 => literal_false(),
+        1 => args.into_iter().next().unwrap(),
+        _ => SMTExpr {
+            op: SMTOp::Or,
+            args,
+        },
     }
 }
 
