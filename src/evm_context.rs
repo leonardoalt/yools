@@ -1,21 +1,12 @@
 use crate::smt::{self, SMTExpr, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
+use crate::variables::SystemVariable;
 use yultsur::yul::*;
 
 pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
     let mut output = ContextVariables::all()
         .into_iter()
-        .map(|var| {
-            let smt_var = ssa.introduce_variable_of_type(
-                &as_declaration(var.identifier.clone()),
-                var.codomain.clone(),
-            );
-            if let Some(default) = &var.default_value {
-                smt::define_fun(smt_var, var.domain, default.clone())
-            } else {
-                smt::declare_fun(smt_var, var.domain)
-            }
-        })
+        .map(|var| var.generate_definition(ssa))
         .collect::<Vec<_>>();
 
     let address = context().address.smt_var(ssa);
@@ -26,24 +17,11 @@ pub fn init(ssa: &mut SSATracker) -> Vec<SMTStatement> {
     output
 }
 
-struct ContextVariable {
-    identifier: Identifier,
-    domain: Vec<SMTSort>,
-    codomain: SMTSort,
-    default_value: Option<SMTExpr>,
-}
-
-impl ContextVariable {
-    pub fn smt_var(&self, ssa: &mut SSATracker) -> SMTVariable {
-        ssa.to_smt_variable(&self.identifier)
-    }
-}
-
 macro_rules! context_variables {
     ($($var:ident: $type:expr; $default_value:expr),*) => {
         // Declare the struct.
         struct ContextVariables {
-            $($var: ContextVariable),*
+            $($var: SystemVariable),*
         }
         // Define the default value.
         impl Default for ContextVariables {
@@ -51,7 +29,7 @@ macro_rules! context_variables {
                 let mut i: u64 = 2047;
                 let mut id = || { i += 1; i };
                 ContextVariables {
-                    $($var: ContextVariable{
+                    $($var: SystemVariable{
                         identifier: identifier(&format!("_{}", stringify!($var)), id()),
                         domain: match $type {
                             Type::Default => vec![],
@@ -70,7 +48,7 @@ macro_rules! context_variables {
         }
         // Return an iterator through the variables.
         impl ContextVariables {
-            fn all() -> Vec<ContextVariable> {
+            fn all() -> Vec<SystemVariable> {
                 vec![
                     $(
                         ContextVariables::default().$var
@@ -394,7 +372,9 @@ pub fn staticcall(
 /// Currently makes all of memory unknown if the length is nonzero.
 #[must_use]
 fn unknown_memory_write(location: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
-    ssa.havoc_unless(&context().memory.identifier, smt::eq_zero(location.length))
+    context()
+        .memory
+        .havoc_unless(ssa, smt::eq_zero(location.length))
 }
 
 #[must_use]
@@ -408,14 +388,12 @@ fn nonstatic_call_happened(return_var: &SMTVariable, ssa: &mut SSATracker) -> Ve
     [
         static_call_happened(ssa),
         // extcodesize, balance, etc
-        ssa.havoc_unless(
-            &context().selfbalance.identifier,
-            smt::eq_zero(return_var.clone()),
-        ),
-        ssa.havoc_unless(
-            &context().storage.identifier,
-            smt::eq_zero(return_var.clone()),
-        ),
+        context()
+            .selfbalance
+            .havoc_unless(ssa, smt::eq_zero(return_var.clone())),
+        context()
+            .storage
+            .havoc_unless(ssa, smt::eq_zero(return_var.clone())),
     ]
     .concat()
 }
@@ -446,13 +424,11 @@ pub fn encode_solc_panic_unreachable(ssa: &mut SSATracker) -> SMTStatement {
 /// its value. Increases the SSA index in any case.
 fn assign_variable_if_executing_regularly(
     ssa: &mut SSATracker,
-    variable: &ContextVariable,
+    variable: &SystemVariable,
     new_value: SMTExpr,
 ) -> SMTStatement {
-    let old_value = variable.smt_var(ssa);
-    let update_condition = executing_regularly(ssa);
-    let new_var = ssa.allocate_new_ssa_index(&variable.identifier);
-    smt::define_const(new_var, smt::ite(update_condition, new_value, old_value))
+    let condition = executing_regularly(ssa);
+    variable.assign_if(ssa, condition, new_value)
 }
 
 pub fn executing_regularly(ssa: &mut SSATracker) -> SMTExpr {
@@ -467,17 +443,5 @@ fn identifier(name: &str, id: u64) -> Identifier {
         id: IdentifierID::Reference(id),
         name: name.to_string(),
         location: None,
-    }
-}
-
-fn as_declaration(identifier: Identifier) -> Identifier {
-    if let IdentifierID::Reference(id) = identifier.id {
-        Identifier {
-            id: IdentifierID::Declaration(id),
-            name: identifier.name,
-            location: None,
-        }
-    } else {
-        panic!()
     }
 }
