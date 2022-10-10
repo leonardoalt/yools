@@ -109,8 +109,10 @@ context_variables! {
     keccak256_32: Type::Function(vec![smt::bv(256)], smt::bv(256)); None,
     keccak256_64: Type::Function(vec![smt::bv(256), smt::bv(256)], smt::bv(256)); None,
     keccak256: Type::Function(vec![smt::array(smt::bv(256), smt::bv(8)), smt::bv(256), smt::bv(256)], smt::bv(256)); None,
+    stop_flag: Type::Default; Some(0.into()),
     revert_flag: Type::Default; Some(0.into()),
-    stop_flag: Type::Default; Some(0.into())
+    revert_sig_4: Type::Constant(smt::bv(32)); None,
+    revert_data_32: Type::Constant(smt::bv(256)); None
 }
 
 // TODO can we make this a global variable?
@@ -132,12 +134,28 @@ impl MemoryRange {
     }
 }
 
-pub fn set_reverted(ssa: &mut SSATracker) -> SMTStatement {
-    assign_variable_if_executing_regularly(ssa, &context().revert_flag.identifier, 1.into())
+pub fn revert(input: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
+    let sig = smt::ite(
+        smt::bvuge(input.length.clone(), 4),
+        mload4(0.into(), ssa),
+        smt::literal_4_bytes(0),
+    );
+    let data = smt::ite(
+        smt::eq(input.length, 0x24),
+        mload(smt::bvadd(input.offset, 4), ssa),
+        0,
+    );
+    vec![
+        assign_variable_if_executing_regularly(ssa, &context().revert_sig_4, sig),
+        assign_variable_if_executing_regularly(ssa, &context().revert_data_32, data),
+        // The order here is important: revert_flag is used to build the two expressions above,
+        // so we can only change it after.
+        assign_variable_if_executing_regularly(ssa, &context().revert_flag, 1.into()),
+    ]
 }
 
 pub fn set_stopped(ssa: &mut SSATracker) -> SMTStatement {
-    assign_variable_if_executing_regularly(ssa, &context().stop_flag.identifier, 1.into())
+    assign_variable_if_executing_regularly(ssa, &context().stop_flag, 1.into())
 }
 
 pub fn address(ssa: &mut SSATracker) -> SMTVariable {
@@ -226,6 +244,15 @@ pub fn mload(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
     let mem = context().memory.smt_var(ssa);
 
     let arguments = (0..32)
+        .map(|i| smt::select(mem.clone(), smt::bvadd(index.clone(), i)))
+        .collect::<Vec<_>>();
+    smt::concat(arguments)
+}
+
+pub fn mload4(index: SMTExpr, ssa: &mut SSATracker) -> SMTExpr {
+    let mem = context().memory.smt_var(ssa);
+
+    let arguments = (0..4)
         .map(|i| smt::select(mem.clone(), smt::bvadd(index.clone(), i)))
         .collect::<Vec<_>>();
     smt::concat(arguments)
@@ -405,16 +432,26 @@ pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> SMTStatement {
     smt::assert(smt::neq(context().revert_flag.smt_var(ssa), 0))
 }
 
+pub fn encode_solc_panic_unreachable(ssa: &mut SSATracker) -> SMTStatement {
+    smt::assert(smt::and_vec(vec![
+        smt::neq(context().revert_flag.smt_var(ssa), 0),
+        smt::eq(
+            context().revert_sig_4.smt_var(ssa),
+            smt::literal("4e487b71".to_string(), smt::bv(32)),
+        ),
+    ]))
+}
+
 /// Assigns to the variable if we neither stopped nor reverted. Otherwise, the variable keeps
 /// its value. Increases the SSA index in any case.
 fn assign_variable_if_executing_regularly(
     ssa: &mut SSATracker,
-    variable: &Identifier,
+    variable: &ContextVariable,
     new_value: SMTExpr,
 ) -> SMTStatement {
-    let old_value = ssa.to_smt_variable(variable);
+    let old_value = variable.smt_var(ssa);
     let update_condition = executing_regularly(ssa);
-    let new_var = ssa.allocate_new_ssa_index(variable);
+    let new_var = ssa.allocate_new_ssa_index(&variable.identifier);
     smt::define_const(new_var, smt::ite(update_condition, new_value, old_value))
 }
 

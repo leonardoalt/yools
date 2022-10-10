@@ -186,7 +186,13 @@ impl Instructions for EVMInstructions {
                 return_vars.first().unwrap(),
                 ssa,
             ),
-            "revert" => vec![evm_context::set_reverted(ssa)],
+            "revert" => evm_context::revert(
+                MemoryRange {
+                    offset: arg_0.unwrap().into(),
+                    length: arg_1.unwrap().into(),
+                },
+                ssa,
+            ),
             "invalid" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "selfdestruct" => panic!("Builtin {} not implemented", builtin.name), // TODO
 

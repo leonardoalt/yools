@@ -33,7 +33,7 @@ fn cli() -> Result<(), String> {
 
 fn symbolic_subcommand() -> App<'static> {
     SubCommand::with_name("symbolic")
-        .about("Symbolically execute Yul programs checking for revert reachability")
+        .about("Symbolically execute Yul programs checking for reachability of solc panics")
         .arg(
             Arg::with_name("input")
                 .short('i')
@@ -104,7 +104,7 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
             Ok(expr)
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let (query, counterexamples_encoded) = yools::encoder::encode_revert_unreachable::<
+    let (query, counterexamples_encoded) = yools::encoder::encode_solc_panic_unreachable::<
         EVMInstructions,
     >(&ast, loop_unroll, &counterexamples);
 
