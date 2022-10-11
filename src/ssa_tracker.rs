@@ -66,18 +66,6 @@ impl SSATracker {
             .collect::<Vec<_>>()
     }
 
-    /// Declares a new SSA index for the given variable and sets it to
-    /// "unknown" if the condition is false and to the old value if it is true.
-    #[must_use]
-    pub fn havoc_unless(&mut self, variable: &Identifier, condition: SMTExpr) -> Vec<SMTStatement> {
-        let old = self.to_smt_variable(variable);
-        let new = self.allocate_new_ssa_index(variable);
-        vec![
-            smt::declare_const(new.clone()),
-            smt::assert(smt::implies(condition, smt::eq(old, new))),
-        ]
-    }
-
     pub fn allocate_new_ssa_index(&mut self, identifier: &Identifier) -> SMTVariable {
         let id = self.identifier_to_id(identifier);
         let index = self.allocate_new_ssa_index_by_id(id);
