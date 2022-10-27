@@ -15,8 +15,9 @@ fn main() {
     for dir_name in [
         "assert_pass",
         "revert_unreachable",
-        "panic_unreachable",
         "some_revert_reachable",
+        "panic_unreachable",
+        "some_panic_reachable",
     ] {
         let destination = Path::new(&out_dir).join(format!("test_{dir_name}.rs"));
         let mut test_file = File::create(&destination).unwrap();

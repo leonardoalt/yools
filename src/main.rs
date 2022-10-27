@@ -104,7 +104,7 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
             Ok(expr)
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let (query, counterexamples_encoded) = yools::encoder::encode_solc_panic_unreachable::<
+    let (query, counterexamples_encoded) = yools::encoder::encode_solc_panic_reachable::<
         EVMInstructions,
     >(&ast, loop_unroll, &counterexamples);
 

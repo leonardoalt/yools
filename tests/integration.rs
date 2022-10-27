@@ -115,7 +115,7 @@ mod some_revert_reachable {
     fn test_some_revert_reachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
 
-        let query = encoder::encode_revert_unreachable::<EVMInstructions>(
+        let query = encoder::encode_revert_reachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(content),
             &[],
@@ -134,7 +134,7 @@ mod revert_unreachable {
     // build.rs creates one test per .yul file in the revert_unreachable directory.
     fn test_revert_unreachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
-        let (query, _) = encoder::encode_revert_unreachable::<EVMInstructions>(
+        let (query, _) = encoder::encode_revert_reachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(&content),
             &[],
@@ -152,7 +152,7 @@ mod panic_unreachable {
     // build.rs creates one test per .yul file in the panic_unreachable directory.
     fn test_panic_unreachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
-        let (query, _) = encoder::encode_solc_panic_unreachable::<EVMInstructions>(
+        let (query, _) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(&content),
             &[],
@@ -161,6 +161,24 @@ mod panic_unreachable {
     }
 
     include!(concat!(env!("OUT_DIR"), "/test_panic_unreachable.rs"));
+}
+
+mod some_panic_reachable {
+    use super::*;
+    // This function is called from tests constructed at build time
+    // and included below.
+    // build.rs creates one test per .yul file in the some_panic_reachable directory.
+    fn test_some_panic_reachable(content: &str, file: &str) {
+        let ast = parse_and_resolve::<EVMInstructions>(content, file);
+        let (query, _) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
+            &ast,
+            loop_unroll_default(&content),
+            &[],
+        );
+        sat(&query, file);
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/test_some_panic_reachable.rs"));
 }
 
 fn parse_and_resolve<Instr: dialect::Dialect>(content: &str, file: &str) -> yultsur::yul::Block {
@@ -212,7 +230,7 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
         Ok(mut ast) => {
             yultsur::resolver::resolve::<InstructionsType>(&mut ast).expect("Resolving error.");
 
-            let (query, _) = encoder::encode_revert_unreachable::<InstructionsType>(
+            let (query, _) = encoder::encode_revert_reachable::<InstructionsType>(
                 &ast,
                 loop_unroll_default(&content),
                 &[],

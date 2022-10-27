@@ -115,7 +115,7 @@ impl MemoryRange {
 pub fn revert(input: MemoryRange, ssa: &mut SSATracker) -> Vec<SMTStatement> {
     let sig = smt::ite(
         smt::bvuge(input.length.clone(), 4),
-        mload4(0.into(), ssa),
+        mload4(input.offset.clone(), ssa),
         smt::literal_4_bytes(0),
     );
     let data = smt::ite(
@@ -406,11 +406,11 @@ fn declare_zero_or_one(var: &SMTVariable) -> Vec<SMTStatement> {
     ]
 }
 
-pub fn encode_revert_unreachable(ssa: &mut SSATracker) -> SMTStatement {
+pub fn encode_revert_reachable(ssa: &mut SSATracker) -> SMTStatement {
     smt::assert(smt::neq(context().revert_flag.smt_var(ssa), 0))
 }
 
-pub fn encode_solc_panic_unreachable(ssa: &mut SSATracker) -> SMTStatement {
+pub fn encode_solc_panic_reachable(ssa: &mut SSATracker) -> SMTStatement {
     smt::assert(smt::and_vec(vec![
         smt::neq(context().revert_flag.smt_var(ssa), 0),
         smt::eq(
