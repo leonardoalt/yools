@@ -85,14 +85,6 @@ fn encode_with_counterexamples<T: Instructions>(
     )
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct FunctionVariables {
-    /// smtlib2 names of the initial values of the function parameters
-    pub parameters: Vec<SMTVariable>,
-    /// smtlib2 names of the final values of the function return variables
-    pub returns: Vec<SMTVariable>,
-}
-
 #[derive(Default)]
 struct FunctionDefinitionCollector {
     function_definitions: BTreeMap<u64, yul::FunctionDefinition>,
@@ -130,24 +122,24 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
 
     /// Encodes the given function, potentially re-creating copies of all local variables
     /// if called multiple times.
-    /// @returns the names of the function parameters and return variables.
-    pub fn encode_function(&mut self, function: &FunctionDefinition) -> FunctionVariables {
-        for param in &function.parameters {
+    /// @returns the names of the return variables.
+    pub fn encode_function(
+        &mut self,
+        function: &FunctionDefinition,
+        arguments: &[SMTVariable],
+    ) -> Vec<SMTVariable> {
+        assert_eq!(function.parameters.len(), arguments.len());
+        for (param, arg) in function.parameters.iter().zip(arguments) {
             let var = self.ssa_tracker.introduce_variable(param);
-            self.out(smt::declare_const(var))
+            self.out(smt::define_const(var, smt::SMTExpr::from(arg.clone())))
         }
-        let parameters = self.ssa_tracker.to_smt_variables(&function.parameters);
         self.encode_variable_declaration(&VariableDeclaration {
             variables: function.returns.clone(),
             value: None,
             location: None,
         });
         self.encode_block(&function.body);
-        let returns = self.ssa_tracker.to_smt_variables(&function.returns);
-        FunctionVariables {
-            parameters,
-            returns,
-        }
+        self.ssa_tracker.to_smt_variables(&function.returns)
     }
 
     fn encode_variable_declaration(&mut self, var: &VariableDeclaration) {
@@ -179,8 +171,6 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             .for_each(|st| self.encode_statement(st));
     }
 
-    fn encode_function_def(&mut self, _fun: &yul::FunctionDefinition) {}
-
     fn encode_statement(&mut self, st: &yul::Statement) {
         match st {
             yul::Statement::VariableDeclaration(var_decl) => {
@@ -188,7 +178,6 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             }
             yul::Statement::Assignment(assignment) => self.encode_assignment(assignment),
             yul::Statement::Block(block) => self.encode_block(block),
-            yul::Statement::FunctionDefinition(fun) => self.encode_function_def(fun),
             yul::Statement::If(if_st) => self.encode_if(if_st),
             yul::Statement::Switch(switch) => self.encode_switch(switch),
             yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
@@ -342,13 +331,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             }
             IdentifierID::Reference(id) => {
                 let fun_def = self.function_definitions[&id].clone();
-                let function_vars = self.encode_function(&fun_def);
-                assert!(arguments.len() == function_vars.parameters.len());
-                arguments
-                    .into_iter()
-                    .zip(function_vars.parameters)
-                    .for_each(|(arg, param)| self.out(smt::assert(smt::eq(arg, param))));
-                function_vars.returns
+                self.encode_function(&fun_def, &arguments)
             }
             _ => panic!(
                 "Unexpected reference in function call: {:?}",
