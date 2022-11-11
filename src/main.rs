@@ -8,71 +8,116 @@ use yultsur::resolver::resolve;
 use yultsur::yul_parser;
 use yultsur::{dialect::EVMDialect, resolver::resolve_inside};
 
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand, Parser, Subcommand};
 
-fn main() {
-    cli().unwrap_or_else(|e| {
-        println!("{}", e);
-        std::process::exit(1);
-    })
+#[derive(Debug, Parser)]
+#[clap(about, version, author)]
+struct Opts {
+   #[clap(subcommand)]
+   pub sub: Subcommands,
 }
 
-fn cli() -> Result<(), String> {
-    let matches = App::new("Yools")
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .version(env!("CARGO_PKG_VERSION"))
-        .about("Tools for Yul.")
-        .subcommands(vec![symbolic_subcommand()])
-        .get_matches();
+#[derive(Debug, Subcommand)]
+pub enum Subcommands {
+    #[clap(about = "Symbolically execute Yul programs checking for reachability of solc panics")]
+    Symbolic(SymbolicArgs),   
+}
 
-    match matches.subcommand() {
-        Some(("symbolic", sub_matches)) => symbolic_revert(sub_matches),
-        _ => unreachable!(),
+#[derive(Debug, Clone, Parser, Default)]
+pub struct SymbolicArgs {
+    #[clap(
+        long,
+        short = 'i',
+        value_name = "INPUT",
+        help = "Yul source file"
+    )]
+    pub input: String,
+}
+
+/// Common trait for all cli commands
+pub trait Cmd: clap::Parser + Sized {
+    type Output;
+    fn run(self) -> eyre::Result<Self::Output>;
+}
+
+impl Cmd for SymbolicArgs {
+    type Output = ();
+
+    fn run(self) -> eyre::Result<Self::Output> {
+        let SymbolicArgs {input} = self;
+        let yul_file = PathBuf::from(input);
+        //
+        println!("file: {}", yul_file.display());
+        Ok(())
     }
 }
 
-fn symbolic_subcommand() -> App<'static> {
-    SubCommand::with_name("symbolic")
-        .about("Symbolically execute Yul programs checking for reachability of solc panics")
-        .arg(
-            Arg::with_name("input")
-                .short('i')
-                .long("input")
-                .help("Yul source file")
-                .value_name("FILE.yul")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("eval")
-                .short('e')
-                .long("eval")
-                .help("Yul expression(s) to evaluate in the reverting execution. Separate multiple expressions by '|'.")
-                .value_name("expression")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("solver")
-                .short('s')
-                .long("solver")
-                .help("SMT solver")
-                .value_name("SOLVER")
-                .takes_value(true)
-                .default_value("cvc5")
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("loop-unroll")
-                .short('l')
-                .long("loop-unroll")
-                .help("Loop unrolling limit")
-                .value_name("LOOP_UNROLL")
-                .takes_value(true)
-                .default_value("10")
-                .required(false),
-        )
+fn main() -> eyre::Result<()> {
+    let opts = Opts::parse();
+    match opts.sub {
+        Subcommands::Symbolic(cmd) => {
+            cmd.run()?;
+        }
+    }
+    Ok(())
 }
+
+//fn cli() -> Result<(), String> {
+//    let matches = App::new("Yools")
+//        .setting(AppSettings::SubcommandRequiredElseHelp)
+//        .version(env!("CARGO_PKG_VERSION"))
+//        .about("Tools for Yul.")
+//        .subcommands(vec![symbolic_subcommand()])
+//        .get_matches();
+//
+//    match matches.subcommand() {
+//        Some(("symbolic", sub_matches)) => symbolic_revert(sub_matches),
+//        _ => unreachable!(),
+//    }
+//}
+
+//fn symbolic_subcommand() -> App<'static> {
+//    SubCommand::with_name("symbolic")
+//        .about("Symbolically execute Yul programs checking for reachability of solc panics")
+//        .arg(
+//            Arg::with_name("input")
+//                .short('i')
+//                .long("input")
+//                .help("Yul source file")
+//                .value_name("FILE.yul")
+//                .takes_value(true)
+//                .required(true),
+//        )
+//        .arg(
+//            Arg::with_name("eval")
+//                .short('e')
+//                .long("eval")
+//                .help("Yul expression(s) to evaluate in the reverting execution. Separate multiple expressions by '|'.")
+//                .value_name("expression")
+//                .takes_value(true)
+//                .required(false),
+//        )
+//        .arg(
+//            Arg::with_name("solver")
+//                .short('s')
+//                .long("solver")
+//                .help("SMT solver")
+//                .value_name("SOLVER")
+//                .takes_value(true)
+//                .default_value("cvc5")
+//                .required(false),
+//        )
+//        .arg(
+//            Arg::with_name("loop-unroll")
+//                .short('l')
+//                .long("loop-unroll")
+//                .help("Loop unrolling limit")
+//                .value_name("LOOP_UNROLL")
+//                .takes_value(true)
+//                .default_value("10")
+//                .required(false),
+//        )
+//}
 
 fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
     let yul_file = PathBuf::from(sub_matches.value_of("input").unwrap());
