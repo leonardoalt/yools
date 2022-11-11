@@ -6,4 +6,5 @@ pub mod sexpr;
 pub mod smt;
 pub mod solver;
 pub mod ssa_tracker;
+pub mod symbolic;
 pub mod variables;
