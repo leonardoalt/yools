@@ -20,7 +20,7 @@ pub enum Subcommands {
 }
 
 
-fn main() -> eyre::Result<()> {
+fn main() -> Result<(), String> {
     let opts = Opts::parse();
     match opts.sub {
         Subcommands::Symbolic(cmd) => {

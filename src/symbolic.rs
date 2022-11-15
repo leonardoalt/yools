@@ -12,7 +12,7 @@ use clap::{Parser};
 /// Common trait for all cli commands
 pub trait Cmd: clap::Parser + Sized {
     type Output;
-    fn run(self) -> eyre::Result<Self::Output>;
+    fn run(self) -> Result<Self::Output, String>;
 }
 
 
@@ -53,7 +53,7 @@ pub struct SymbolicArgs {
 impl Cmd for SymbolicArgs {
     type Output = ();
 
-    fn run(self) -> eyre::Result<Self::Output> {
+    fn run(self) -> Result<Self::Output, String> {
         let SymbolicArgs {input, eval, solver, loop_unroll} = self;
         
         let content = std::fs::read_to_string(input).unwrap();
