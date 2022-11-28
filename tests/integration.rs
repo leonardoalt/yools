@@ -152,7 +152,7 @@ mod panic_unreachable {
     // build.rs creates one test per .yul file in the panic_unreachable directory.
     fn test_panic_unreachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
-        let (query, _) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
+        let (query, ..) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(&content),
             &[],
@@ -170,7 +170,7 @@ mod some_panic_reachable {
     // build.rs creates one test per .yul file in the some_panic_reachable directory.
     fn test_some_panic_reachable(content: &str, file: &str) {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
-        let (query, _) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
+        let (query, ..) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
             &ast,
             loop_unroll_default(&content),
             &[],

@@ -90,7 +90,7 @@ context_variables! {
     stop_flag: Type::Default; Some(0.into()),
     revert_flag: Type::Default; Some(0.into()),
     revert_sig_4: Type::Constant(smt::bv(32)); None,
-    revert_data_32: Type::Constant(smt::bv(256)); None
+    revert_data_32: Type::Default; None
 }
 
 // TODO can we make this a global variable?
@@ -422,7 +422,7 @@ pub fn encode_solc_panic_reachable(ssa: &mut SSATracker) -> SMTStatement {
 
 /// Assigns to the variable if we neither stopped nor reverted. Otherwise, the variable keeps
 /// its value. Increases the SSA index in any case.
-fn assign_variable_if_executing_regularly(
+pub fn assign_variable_if_executing_regularly(
     ssa: &mut SSATracker,
     variable: &SystemVariable,
     new_value: SMTExpr,

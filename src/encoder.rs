@@ -1,4 +1,5 @@
 use crate::evm_context;
+use crate::execution_position::ExecutionPositionManager;
 use crate::smt::{self, SMTExpr, SMTFormat, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 
@@ -29,6 +30,7 @@ pub struct Encoder<InstructionsType> {
     interpreter: InstructionsType,
     loop_unroll: u64,
     path_conditions: Vec<SMTExpr>,
+    execution_position: ExecutionPositionManager,
 }
 
 pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
@@ -51,23 +53,27 @@ pub fn encode_revert_reachable<T: Instructions>(
     encoder.encode(ast, loop_unroll);
     encoder.encode_revert_reachable();
 
-    encode_with_counterexamples(encoder, counterexamples)
+    encode_with_counterexamples(&mut encoder, counterexamples)
 }
 
 pub fn encode_solc_panic_reachable<T: Instructions>(
     ast: &Block,
     loop_unroll: u64,
     counterexamples: &[Expression],
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, String, ExecutionPositionManager) {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
     encoder.encode_solc_panic_reachable();
+    let revert_position = ExecutionPositionManager::smt_variable()
+        .smt_var(&mut encoder.ssa_tracker)
+        .as_smt();
 
-    encode_with_counterexamples(encoder, counterexamples)
+    let (enc, cex) = encode_with_counterexamples(&mut encoder, counterexamples);
+    (enc, cex, revert_position, encoder.execution_position)
 }
 
 fn encode_with_counterexamples<T: Instructions>(
-    mut encoder: Encoder<T>,
+    encoder: &mut Encoder<T>,
     counterexamples: &[Expression],
 ) -> (String, Vec<String>) {
     let encoded_counterexamples = counterexamples
@@ -110,7 +116,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     }
 
     fn encode_context_init(&mut self) {
-        let output = evm_context::init(&mut self.ssa_tracker);
+        let mut output = evm_context::init(&mut self.ssa_tracker);
+        output.push(ExecutionPositionManager::init(&mut self.ssa_tracker));
         self.out_vec(output);
     }
 
@@ -138,6 +145,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             value: None,
             location: None,
         });
+
         self.encode_block(&function.body);
         self.ssa_tracker.to_smt_variables(&function.returns)
     }
@@ -312,7 +320,23 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             .rev()
             .collect();
 
-        match call.function.id {
+        let record_location = match call.function.id {
+            IdentifierID::Reference(_) => true,
+            IdentifierID::BuiltinReference => call.function.name == "revert", // TODO more flexibility about which builtins to record.
+            _ => false,
+        };
+
+        if record_location {
+            self.execution_position.function_called(call);
+            let record_pos = evm_context::assign_variable_if_executing_regularly(
+                &mut self.ssa_tracker,
+                &ExecutionPositionManager::smt_variable(),
+                self.execution_position.position_id().into(),
+            );
+            self.out(record_pos);
+        }
+
+        let return_vars = match call.function.id {
             IdentifierID::BuiltinReference => {
                 let builtin = &InstructionsType::builtin(&call.function.name).unwrap();
                 let return_vars: Vec<SMTVariable> = (0..builtin.returns)
@@ -337,7 +361,18 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 "Unexpected reference in function call: {:?}",
                 call.function.id
             ),
+        };
+
+        if record_location {
+            self.execution_position.function_returned();
+            let record_pos = evm_context::assign_variable_if_executing_regularly(
+                &mut self.ssa_tracker,
+                &ExecutionPositionManager::smt_variable(),
+                self.execution_position.position_id().into(),
+            );
+            self.out(record_pos);
         }
+        return_vars
     }
 }
 

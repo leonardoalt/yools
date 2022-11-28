@@ -1,10 +1,14 @@
 use std::env;
 use std::path::PathBuf;
 
+use codespan_reporting::term::termcolor::WriteColor;
+use colored::Colorize;
+use num_traits::ToPrimitive;
 use yools::evm_builtins::EVMInstructions;
-use yools::solver;
+use yools::{execution_position, solver};
 
 use yultsur::resolver::resolve;
+use yultsur::yul::SourceLocation;
 use yultsur::yul_parser;
 use yultsur::{dialect::EVMDialect, resolver::resolve_inside};
 
@@ -26,7 +30,7 @@ fn cli() -> Result<(), String> {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("symbolic", sub_matches)) => symbolic_revert(sub_matches),
+        Some(("symbolic", sub_matches)) => symbolic_revert_cli(sub_matches),
         _ => unreachable!(),
     }
 }
@@ -74,13 +78,10 @@ fn symbolic_subcommand() -> App<'static> {
         )
 }
 
-fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
+fn symbolic_revert_cli(sub_matches: &ArgMatches) -> Result<(), String> {
     let yul_file = PathBuf::from(sub_matches.value_of("input").unwrap());
 
-    let content = std::fs::read_to_string(yul_file).unwrap();
-
-    let mut ast = yul_parser::parse_block(&content)?;
-    resolve::<EVMDialect>(&mut ast)?;
+    let source = std::fs::read_to_string(yul_file).unwrap();
 
     let loop_unroll: u64 = sub_matches
         .value_of("loop-unroll")
@@ -96,6 +97,27 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
         vec![]
     };
 
+    use codespan_reporting::term::termcolor;
+    let mut output = termcolor::StandardStream::stdout(termcolor::ColorChoice::Always);
+    symbolic_revert(
+        &source,
+        loop_unroll,
+        sub_matches.value_of("solver").unwrap(),
+        eval_strings,
+        &mut output,
+    )
+}
+
+fn symbolic_revert(
+    source: &str,
+    loop_unroll: u64,
+    solver: &str,
+    eval_strings: Vec<String>,
+    output: &mut dyn codespan_reporting::term::termcolor::WriteColor,
+) -> Result<(), String> {
+    let mut ast = yul_parser::parse_block(source)?;
+    resolve::<EVMDialect>(&mut ast)?;
+
     let counterexamples = eval_strings
         .iter()
         .map(|eval| {
@@ -104,31 +126,135 @@ fn symbolic_revert(sub_matches: &ArgMatches) -> Result<(), String> {
             Ok(expr)
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let (query, counterexamples_encoded) = yools::encoder::encode_solc_panic_reachable::<
-        EVMInstructions,
-    >(&ast, loop_unroll, &counterexamples);
+    let (query, counterexamples_encoded, panic_position, position_manager) =
+        yools::encoder::encode_solc_panic_reachable::<EVMInstructions>(
+            &ast,
+            loop_unroll,
+            &counterexamples,
+        );
 
-    let solver = solver::SolverConfig::new(sub_matches.value_of("solver").unwrap());
-    let (result, values) =
-        solver::query_smt_with_solver_and_eval(&query, &counterexamples_encoded, solver);
+    let cex = [counterexamples_encoded, [panic_position].to_vec()].concat();
+    let solver = solver::SolverConfig::new(solver);
+    let (result, mut values) = solver::query_smt_with_solver_and_eval(&query, &cex, solver);
     match result {
         true => {
-            println!("Revert is reachable.");
+            let panic_position = values.pop().unwrap();
+            if let solver::ModelValue::Number(position) = panic_position {
+                print_detailed_diagnostics(
+                    source,
+                    position_manager.call_stack_at_position(execution_position::PositionID(
+                        position.to_usize().unwrap(),
+                    )),
+                    output,
+                );
+            } else {
+                write!(output, "Panic is reachable.").unwrap();
+            }
             if !eval_strings.is_empty() {
-                println!(
-                    "Evaluated expressions:\n{}",
+                write!(
+                    output,
+                    "{}\n{}",
+                    "Evaluated expressions:".bright_yellow(),
                     eval_strings
                         .iter()
                         .zip(values.iter())
                         .map(|(s, v)| { format!("{} = {}", s, v) })
                         .collect::<Vec<_>>()
                         .join("\n")
-                );
+                )
+                .unwrap();
             }
         }
         false => {
-            println!("All reverts are unreachable.");
+            write!(output, "All panics are unreachable.").unwrap();
         }
     }
     Ok(())
+}
+
+fn print_detailed_diagnostics(
+    source: &str,
+    call_stack: &[Option<SourceLocation>],
+    output: &mut dyn WriteColor,
+) {
+    use codespan_reporting as cs;
+    use cs::diagnostic::{Diagnostic, Label};
+    use cs::files::SimpleFiles;
+
+    let config = codespan_reporting::term::Config::default();
+    let mut files = SimpleFiles::new();
+    let file_id = files.add("input", source);
+    if let [stack @ .., Some(pos)] = call_stack {
+        let diagnostic = Diagnostic::error()
+            .with_message("Panic is reachable.")
+            .with_labels(vec![Label::primary(file_id, pos.start..pos.end)
+                .with_message("This revert causes a panic.")]);
+        cs::term::emit(output, &config, &files, &diagnostic).unwrap();
+        for (depth, pos) in stack.iter().rev().enumerate() {
+            let mut diagnostic =
+                Diagnostic::note().with_message(format!("Stack level {}:", depth + 1));
+            diagnostic = match pos {
+                Some(pos) => {
+                    diagnostic.with_labels(vec![Label::primary(file_id, (pos.start)..(pos.end))
+                        .with_message("Called from here.")])
+                }
+                None => diagnostic,
+            };
+            cs::term::emit(output, &config, &files, &diagnostic).unwrap();
+        }
+    } else {
+        panic!();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use codespan_reporting::term::termcolor;
+    use std::io::BufWriter;
+
+    use super::*;
+
+    #[test]
+    fn stack_trace() {
+        let source = concat!(
+            "{\n",
+            "  function f() {\n",
+            "    mstore(0, 35408467139433450592217433187231851964531694900788300625387963629091585785856)\n",
+            "    mstore(4, 0x11)\n",
+            "    revert(0, 0x24)\n",
+            "  }\n",
+            "  function g() {\n",
+            "    f()\n",
+            "  }\n",
+            "  g()\n",
+            "}\n"
+        ).to_string();
+        let mut output = termcolor::NoColor::new(BufWriter::new(Vec::new()));
+        symbolic_revert(&source, 1, "z3", vec![], &mut output).unwrap();
+        let output_str = std::str::from_utf8(output.get_ref().buffer()).unwrap();
+        println!("{}", output_str);
+        assert_eq!(
+            output_str,
+            concat!(
+                "error: Panic is reachable.\n",
+                "  ┌─ input:5:5\n",
+                "  │\n",
+                "5 │     revert(0, 0x24)\n",
+                "  │     ^^^^^^^^^^^^^^^ This revert causes a panic.\n",
+                "\n",
+                "note: Stack level 1:\n",
+                "  ┌─ input:8:5\n",
+                "  │\n",
+                "8 │     f()\n",
+                "  │     ^^^ Called from here.\n",
+                "\n",
+                "note: Stack level 2:\n",
+                "   ┌─ input:10:3\n",
+                "   │\n",
+                "10 │   g()\n",
+                "   │   ^^^ Called from here.\n",
+                "\n"
+            )
+        );
+    }
 }
