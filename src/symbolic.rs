@@ -7,7 +7,7 @@ use yultsur::resolver::resolve;
 use yultsur::yul_parser;
 use yultsur::{dialect::EVMDialect, resolver::resolve_inside};
 
-use clap::{Parser};
+use clap::Parser;
 
 /// Common trait for all cli commands
 pub trait Cmd: clap::Parser + Sized {
@@ -15,15 +15,9 @@ pub trait Cmd: clap::Parser + Sized {
     fn run(self) -> Result<Self::Output, String>;
 }
 
-
 #[derive(Debug, Clone, Parser, Default)]
 pub struct SymbolicArgs {
-    #[clap(
-        long,
-        short = 'i',
-        value_name = "FILE.yul",
-        help = "Yul source file"
-    )]
+    #[clap(long, short = 'i', value_name = "FILE.yul", help = "Yul source file")]
     pub input: PathBuf,
     #[clap(
         long,
@@ -54,8 +48,13 @@ impl Cmd for SymbolicArgs {
     type Output = ();
 
     fn run(self) -> Result<Self::Output, String> {
-        let SymbolicArgs {input, eval, solver, loop_unroll} = self;
-        
+        let SymbolicArgs {
+            input,
+            eval,
+            solver,
+            loop_unroll,
+        } = self;
+
         let content = std::fs::read_to_string(input).unwrap();
 
         let mut ast = yul_parser::parse_block(&content).unwrap();
@@ -78,7 +77,8 @@ impl Cmd for SymbolicArgs {
                 resolve_inside::<EVMDialect>(&mut expr, &ast)?;
                 Ok(expr)
             })
-            .collect::<Result<Vec<_>, String>>().unwrap();
+            .collect::<Result<Vec<_>, String>>()
+            .unwrap();
 
         let (query, counterexamples_encoded) = crate::encoder::encode_solc_panic_reachable::<
             EVMInstructions,
@@ -107,7 +107,7 @@ impl Cmd for SymbolicArgs {
                 println!("All reverts are unreachable.");
             }
         }
-        
+
         Ok(())
     }
 }

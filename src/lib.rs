@@ -1,10 +1,10 @@
 pub mod cfg;
 pub mod encoder;
-pub mod symbolic;
 pub mod evm_builtins;
 pub mod evm_context;
 pub mod sexpr;
 pub mod smt;
 pub mod solver;
 pub mod ssa_tracker;
+pub mod symbolic;
 pub mod variables;
