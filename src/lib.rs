@@ -1,5 +1,6 @@
 pub mod cfg;
 pub mod encoder;
+pub mod evaluator;
 pub mod evm_builtins;
 pub mod evm_context;
 pub mod execution_position;
