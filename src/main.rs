@@ -16,7 +16,7 @@ use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
 fn main() {
     cli().unwrap_or_else(|e| {
-        println!("{}", e);
+        println!("{e}");
         std::process::exit(1);
     })
 }
@@ -158,7 +158,7 @@ fn symbolic_revert(
                     eval_strings
                         .iter()
                         .zip(values.iter())
-                        .map(|(s, v)| { format!("{} = {}", s, v) })
+                        .map(|(s, v)| { format!("{s} = {v}") })
                         .collect::<Vec<_>>()
                         .join("\n")
                 )
@@ -232,7 +232,7 @@ mod test {
         let mut output = termcolor::NoColor::new(BufWriter::new(Vec::new()));
         symbolic_revert(&source, 1, "z3", vec![], &mut output).unwrap();
         let output_str = std::str::from_utf8(output.get_ref().buffer()).unwrap();
-        println!("{}", output_str);
+        println!("{output_str}");
         assert_eq!(
             output_str,
             concat!(

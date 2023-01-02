@@ -318,7 +318,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -336,7 +336,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     // TODO `switch` is actually buggy in the parser
@@ -346,7 +346,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -355,7 +355,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -375,7 +375,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -384,7 +384,7 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::Block(block));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 
     #[test]
@@ -403,6 +403,6 @@ mod tests {
 
         let cfg = CFGBuilder::build(yul::Statement::If(if_st));
 
-        println!("{:?}", cfg);
+        println!("{cfg:?}");
     }
 }
