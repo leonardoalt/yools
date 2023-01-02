@@ -121,7 +121,7 @@ fn query_smt_internal(query: &String, solver: SolverConfig) -> (String, String) 
     ) {
         (Ok(output), Ok(stderr)) => (output, stderr),
         (Err(err), _) | (_, Err(err)) => {
-            panic!("Could not decode output from SMT solver.\nError: {}", err)
+            panic!("Could not decode output from SMT solver.\nError: {err}")
         }
     }
 }
@@ -192,7 +192,7 @@ mod test {
                 &vec!["x".to_string()],
                 solver,
             );
-            assert_eq!(sat, true);
+            assert!(sat);
             assert_eq!(eval, vec![ModelValue::Number(BigUint::from(0x100u32))]);
         })
     }
@@ -205,7 +205,7 @@ mod test {
                 &vec![],
                 solver,
             );
-            assert_eq!(sat, true);
+            assert!(sat);
             assert_eq!(eval, vec![]);
         })
     }
@@ -219,7 +219,7 @@ mod test {
                 &vec!["x".to_string()],
                 solver,
             );
-            assert_eq!(sat, false);
+            assert!(!sat);
             assert_eq!(eval, vec![]);
         })
     }
@@ -232,7 +232,7 @@ mod test {
                 &vec!["x".to_string(), "(bvadd x #x0001)".to_string()],
                 solver,
             );
-            assert_eq!(sat, true);
+            assert!(sat);
             assert_eq!(
                 eval,
                 vec![
@@ -252,7 +252,7 @@ mod test {
                 &vec!["x".to_string()],
                 solver,
             );
-            assert_eq!(sat, true);
+            assert!(sat);
             assert_eq!(eval.len(), 1);
             match &eval[0] {
                 ModelValue::String(s) => {
@@ -277,7 +277,7 @@ mod test {
                 &vec!["x".to_string()],
                 solver,
             );
-            assert_eq!(sat, true);
+            assert!(sat);
             assert_eq!(eval.len(), 1);
             match &eval[0] {
                 ModelValue::String(s) => {

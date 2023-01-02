@@ -39,7 +39,7 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
         match builtin.name {
             "assert" => vec![smt::assert(smt::and_vec(vec![
                 evm_context::executing_regularly(ssa),
-                smt::and_vec(path_conditions.to_vec().clone()),
+                smt::and_vec(path_conditions.to_vec()),
                 smt::eq_zero(arguments.into_iter().next().unwrap()),
             ]))],
             _ => self
@@ -136,7 +136,7 @@ mod revert_unreachable {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
         let (query, _) = encoder::encode_revert_reachable::<EVMInstructions>(
             &ast,
-            loop_unroll_default(&content),
+            loop_unroll_default(content),
             &[],
         );
         unsat(&query, file);
@@ -154,7 +154,7 @@ mod panic_unreachable {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
         let (query, ..) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
             &ast,
-            loop_unroll_default(&content),
+            loop_unroll_default(content),
             &[],
         );
         unsat(&query, file);
@@ -172,7 +172,7 @@ mod some_panic_reachable {
         let ast = parse_and_resolve::<EVMInstructions>(content, file);
         let (query, ..) = encoder::encode_solc_panic_reachable::<EVMInstructions>(
             &ast,
-            loop_unroll_default(&content),
+            loop_unroll_default(content),
             &[],
         );
         sat(&query, file);
@@ -184,8 +184,7 @@ mod some_panic_reachable {
 fn parse_and_resolve<Instr: dialect::Dialect>(content: &str, file: &str) -> yultsur::yul::Block {
     match yul_parser::parse_block(content) {
         Err(err) => {
-            assert!(false, "Parse error in file {file}:\n{err}");
-            unreachable!();
+            unreachable!("Parse error in file {file}:\n{err}");
         }
         Ok(mut ast) => {
             yultsur::resolver::resolve::<Instr>(&mut ast).expect("Resolving error.");
@@ -215,17 +214,17 @@ fn test_file_syntax_update<T: Instructions>(test_file: &str) {
 
 fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, update: bool) {
     assert!(Path::new(&test_file).exists());
-    let expect_name = format!("{}.smt2", test_file);
+    let expect_name = format!("{test_file}.smt2");
     let expectation = Path::new(&expect_name);
     if !expectation.exists() {
-        assert!(File::create(&expectation).is_ok());
+        assert!(File::create(expectation).is_ok());
     }
 
-    let content = fs::read_to_string(&test_file).expect("I need to read this file.");
+    let content = fs::read_to_string(test_file).expect("I need to read this file.");
 
     match yul_parser::parse_block(&content) {
         Err(err) => {
-            assert!(false, "Parse error in file {test_file}:\n{err}")
+            unreachable!("Parse error in file {test_file}:\n{err}")
         }
         Ok(mut ast) => {
             yultsur::resolver::resolve::<InstructionsType>(&mut ast).expect("Resolving error.");
@@ -241,7 +240,7 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
                 if update {
                     assert!(fs::write(expect_name, query).is_ok());
                 } else {
-                    panic!("Expected:\n{}\nGot:\n{}", expected, query);
+                    panic!("Expected:\n{expected}\nGot:\n{query}");
                 }
             }
         }
@@ -251,17 +250,13 @@ fn test_file_syntax<InstructionsType: encoder::Instructions>(test_file: &str, up
 fn unsat(query: &String, file: &str) {
     assert!(
         !solver::query_smt(query),
-        "\n--------------------\n{} FAILED\n--------------------\nShould be UNSAT. Query:\n{}",
-        file,
-        query
+        "\n--------------------\n{file} FAILED\n--------------------\nShould be UNSAT. Query:\n{query}"
     );
 }
 
 fn sat(query: &String, file: &str) {
     assert!(
         solver::query_smt(query),
-        "\n--------------------\n{} FAILED\n--------------------\nShould be SAT. Query:\n{}",
-        file,
-        query
+        "\n--------------------\n{file} FAILED\n--------------------\nShould be SAT. Query:\n{query}"
     );
 }

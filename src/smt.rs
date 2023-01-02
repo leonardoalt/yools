@@ -37,7 +37,7 @@ pub struct SMTExpr {
 impl From<u64> for SMTExpr {
     fn from(input: u64) -> SMTExpr {
         SMTExpr {
-            op: SMTOp::Literal(format!("{:064x}", input), SMTSort::BV(256)),
+            op: SMTOp::Literal(format!("{input:064x}"), SMTSort::BV(256)),
             args: vec![],
         }
     }
@@ -375,15 +375,15 @@ pub fn uf(function: SMTVariable, args: Vec<SMTExpr>) -> SMTExpr {
 }
 
 pub fn literal_1_byte(n: u64) -> SMTExpr {
-    literal(format!("{:02x}", n), SMTSort::BV(8))
+    literal(format!("{n:02x}"), SMTSort::BV(8))
 }
 
 pub fn literal_4_bytes(n: u64) -> SMTExpr {
-    literal(format!("{:08x}", n), SMTSort::BV(32))
+    literal(format!("{n:08x}"), SMTSort::BV(32))
 }
 
 pub fn literal_12_bytes(n: u64) -> SMTExpr {
-    literal(format!("{:024x}", n), SMTSort::BV(96))
+    literal(format!("{n:024x}"), SMTSort::BV(96))
 }
 
 fn literal_bool(lit: String) -> SMTExpr {
@@ -441,7 +441,7 @@ impl SMTFormat for SMTSort {
     fn as_smt(&self) -> String {
         match self {
             SMTSort::Bool => "Bool".to_string(),
-            SMTSort::BV(width) => format!("(_ BitVec {})", width),
+            SMTSort::BV(width) => format!("(_ BitVec {width})"),
             SMTSort::Array(index, elem) => format!("(Array {} {})", index.as_smt(), elem.as_smt()),
         }
     }
@@ -668,7 +668,7 @@ impl SMTFormat for SMTExpr {
 
             SMTOp::Literal(lit, sort) => match sort {
                 SMTSort::Bool => lit.to_string(),
-                SMTSort::BV(_) => format!("#x{}", lit),
+                SMTSort::BV(_) => format!("#x{lit}"),
                 _ => panic!(),
             },
             SMTOp::Variable(var) if self.args.is_empty() => var.as_smt(),

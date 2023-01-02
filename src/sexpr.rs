@@ -31,7 +31,7 @@ impl FromStr for SExpr {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (expr, mut rest) = parse_sexpr(s.chars().peekable());
-        if rest.peek() != None {
+        if rest.peek().is_some() {
             Err(format!("Leftover data: {}", rest.collect::<String>()))
         } else {
             Ok(expr)
@@ -80,7 +80,7 @@ fn parse_sexpr(mut input: Peekable<Chars>) -> (SExpr, Peekable<Chars>) {
     } else {
         let mut symbol = String::new();
         loop {
-            if input.peek() == None {
+            if input.peek().is_none() {
                 break;
             }
             let c = *input.peek().unwrap();
