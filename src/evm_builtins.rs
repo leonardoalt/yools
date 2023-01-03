@@ -97,14 +97,17 @@ impl Instructions for EVMInstructions {
             "calldatasize" => single_return(evm_context::calldatasize(ssa).into()),
             "calldatacopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "codesize" => single_return(evm_context::codesize(ssa).into()),
-            "codecopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "codecopy" => vec![], //panic!("Builtin {} not implemented", builtin.name), // TODO
+            "datasize" => vec![smt::declare_const(return_vars[0].clone())], // TODO
+            "dataoffset" => vec![smt::declare_const(return_vars[0].clone())], // TODO
+            "datacopy" => vec![], //panic!("Builtin {} not implemented", builtin.name), // TODO
             "gasprice" => single_return(evm_context::gasprice(ssa).into()),
-            "extcodesize" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "extcodesize" => vec![smt::declare_const(return_vars[0].clone())], //panic!("Builtin {} not implemented", builtin.name), // TODO
             "extcodecopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "returndatasize" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "returndatacopy" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "returndatasize" => vec![smt::declare_const(return_vars[0].clone())], //panic!("Builtin {} not implemented", builtin.name), // TODO
+            "returndatacopy" => vec![], //panic!("Builtin {} not implemented", builtin.name), // TODO
             "extcodehash" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "blockhash" => panic!("Builtin {} not implemented", builtin.name),   // TODO
+            "blockhash" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "coinbase" => single_return(evm_context::coinbase(ssa).into()),
             "timestamp" => single_return(evm_context::timestamp(ssa).into()),
             "number" => single_return(evm_context::number(ssa).into()),
@@ -132,12 +135,12 @@ impl Instructions for EVMInstructions {
                 ssa,
             )],
             "msize" => panic!("Builtin {} not implemented", builtin.name), // TODO
-            "gas" => panic!("Builtin {} not implemented", builtin.name),   // TODO
-            "log0" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "log1" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "log2" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "log3" => panic!("Builtin {} not implemented", builtin.name),  // TODO
-            "log4" => panic!("Builtin {} not implemented", builtin.name),  // TODO
+            "gas" => vec![smt::declare_const(return_vars[0].clone())], //panic!("Builtin {} not implemented", builtin.name),   // TODO
+            "log0" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "log1" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "log2" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "log3" => panic!("Builtin {} not implemented", builtin.name), // TODO
+            "log4" => panic!("Builtin {} not implemented", builtin.name), // TODO
             "create" => evm_context::create(
                 arg_0.unwrap().into(),
                 MemoryRange::new(arg_1.unwrap(), arg_2.unwrap()),

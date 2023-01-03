@@ -1,7 +1,8 @@
-use crate::evm_context;
+use crate::evaluator::Evaluator;
 use crate::execution_position::ExecutionPositionManager;
-use crate::smt::{self, SMTExpr, SMTFormat, SMTSort, SMTStatement, SMTVariable};
+use crate::smt::{SMTExpr, SMTFormat, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
+use crate::{evm_context, smt};
 
 use num_traits::Num;
 use yultsur::dialect::{Builtin, Dialect};
@@ -29,6 +30,7 @@ pub struct Encoder<InstructionsType> {
     ssa_tracker: SSATracker,
     output: Vec<SMTStatement>,
     interpreter: InstructionsType,
+    evaluator: Evaluator,
     loop_unroll: u64,
     path_conditions: Vec<SMTExpr>,
     execution_position: ExecutionPositionManager,
@@ -55,6 +57,31 @@ pub fn encode_revert_reachable<T: Instructions>(
     encoder.encode_revert_reachable();
 
     encode_with_counterexamples(&mut encoder, counterexamples)
+}
+
+pub fn encode_with_evaluator<T: Instructions>(
+    ast: &Block,
+    loop_unroll: u64,
+    evaluator: Evaluator,
+    ssa_tracker: SSATracker,
+) -> (String, Evaluator, SSATracker) {
+    let mut encoder = Encoder::<T> {
+        evaluator,
+        ssa_tracker,
+        ..Default::default()
+    };
+    encoder.encode(ast, loop_unroll);
+    let query = encoder
+        .output
+        .iter()
+        .map(|s| s.as_smt())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (
+        query,
+        std::mem::take(&mut encoder.evaluator),
+        std::mem::take(&mut encoder.ssa_tracker),
+    )
 }
 
 pub fn encode_solc_panic_reachable<T: Instructions>(
@@ -139,8 +166,13 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         assert_eq!(function.parameters.len(), arguments.len());
         for (param, arg) in function.parameters.iter().zip(arguments) {
             let var = self.ssa_tracker.introduce_variable(param);
-            self.out(smt::define_const(var, smt::SMTExpr::from(arg.clone())))
+            self.out(smt::define_const(
+                var.clone(),
+                smt::SMTExpr::from(arg.clone()),
+            ));
+            self.evaluator.define_from_variable(&var, arg);
         }
+
         self.encode_variable_declaration(&VariableDeclaration {
             variables: function.returns.clone(),
             value: None,
@@ -200,7 +232,14 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     fn encode_if(&mut self, expr: &yul::If) {
         let cond = self.encode_expression(&expr.condition);
         assert!(cond.len() == 1);
+        if self
+            .evaluator
+            .variable_known_equal(&cond[0], &"0".to_string())
+        {
+            return;
+        }
         let prev_ssa = self.ssa_tracker.copy_current_ssa();
+        let prev_eval = self.evaluator.copy_state();
 
         self.push_path_condition(smt::neq(cond[0].clone(), 0));
         self.encode_block(&expr.body);
@@ -209,6 +248,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         let output = self
             .ssa_tracker
             .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+        self.evaluator.join_with_old_state(prev_eval);
         self.out_vec(output);
     }
 
@@ -221,6 +261,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             let cond = self.encode_expression(&for_loop.condition);
             assert!(cond.len() == 1);
             let prev_ssa = self.ssa_tracker.copy_current_ssa();
+            let prev_eval = self.evaluator.copy_state();
+            // TODO the evaluator does not have path conditions - is that OK?
 
             self.push_path_condition(smt::neq(cond[0].clone(), 0));
             self.encode_block(&for_loop.body);
@@ -230,6 +272,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             let output = self
                 .ssa_tracker
                 .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+            self.evaluator.join_with_old_state(prev_eval);
             self.out_vec(output);
         }
     }
@@ -239,6 +282,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         assert!(discriminator.len() == 1);
         let pre_switch_ssa = self.ssa_tracker.copy_current_ssa();
         let mut post_switch_ssa = self.ssa_tracker.take_current_ssa();
+        let prev_eval = self.evaluator.copy_state();
 
         for Case {
             literal,
@@ -247,6 +291,15 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
         } in &switch.cases
         {
             let is_default = literal.is_none();
+            // TODO this will always run the default case.
+            // We should first go through all case labels and see if we only need to execute a single one.
+            if !is_default
+                && self
+                    .evaluator
+                    .variable_known_unequal(&discriminator[0], &literal.as_ref().unwrap().literal)
+            {
+                continue;
+            }
 
             self.ssa_tracker.set_current_ssa(pre_switch_ssa.clone());
 
@@ -259,7 +312,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                         .map(|case| {
                             smt::eq(
                                 discriminator[0].clone(),
-                                self.encode_literal_value(case.literal.as_ref().unwrap()),
+                                self.encode_literal_value(case.literal.as_ref().unwrap())
+                                    .unwrap(),
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -267,7 +321,8 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             } else {
                 smt::neq(
                     discriminator[0].clone(),
-                    self.encode_literal_value(literal.as_ref().unwrap()),
+                    self.encode_literal_value(literal.as_ref().unwrap())
+                        .unwrap(),
                 )
             };
 
@@ -279,9 +334,13 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                 .ssa_tracker
                 .join_branches(skip_condition, post_switch_ssa);
             self.out_vec(output);
+            // TODO check if this is correct.
+            self.evaluator.join_with_old_state(prev_eval.clone());
             post_switch_ssa = self.ssa_tracker.take_current_ssa();
             post_switch_ssa.retain(|key, _| pre_switch_ssa.contains_key(key));
         }
+        // TODO we should actually reset thet state of the evaluator, because
+        // we do not know in which branch we ended up
 
         self.ssa_tracker.set_current_ssa(post_switch_ssa);
     }
@@ -297,10 +356,12 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     fn encode_literal(&mut self, literal: &Literal) -> SMTVariable {
         let sort = SMTSort::BV(256);
         let var = self.new_temporary_variable(sort);
-        self.out(smt::define_const(
-            var.clone(),
-            self.encode_literal_value(literal),
-        ));
+        self.evaluator.define_from_literal(&var, literal);
+        if let Some(value) = self.encode_literal_value(literal) {
+            self.out(smt::define_const(var.clone(), value));
+        } else {
+            self.out(smt::declare_const(var.clone()))
+        }
         var
     }
 
@@ -309,7 +370,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     }
 
     fn encode_function_call(&mut self, call: &FunctionCall) -> Vec<SMTVariable> {
-        let arguments = call
+        let arguments: Vec<SMTVariable> = call
             .arguments
             .iter()
             .rev()
@@ -344,6 +405,15 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
                     .map(|_i| self.new_temporary_variable(SMTSort::BV(256)))
                     .collect();
 
+                // TODO call evaluator first or interpreter first?
+                self.evaluator
+                    .builtin_call(builtin, &arguments, &return_vars);
+                if builtin.name == "call" {
+                    // if let Some((ast, calldata)) = self.evaluator.is_call_to_knon_contract(arguments) {
+
+                    //     // TODO
+                    // }
+                }
                 let result = self.interpreter.encode_builtin_call(
                     builtin,
                     arguments,
@@ -394,17 +464,26 @@ impl<T> Encoder<T> {
 
         for (v, val) in variables.iter().zip(values.into_iter()) {
             let var = self.ssa_tracker.allocate_new_ssa_index(v);
+            self.evaluator.define_from_variable(&var, &val);
             self.out(smt::define_const(var, val.into()));
         }
     }
 
-    fn encode_literal_value(&self, literal: &Literal) -> SMTExpr {
-        let parsed = if literal.literal.starts_with("0x") {
-            num_bigint::BigUint::from_str_radix(&literal.literal[2..], 16).unwrap()
+    /// Returns the literal value encoded as an SMT expression.
+    /// Might fail if the literal is a data object reference or something else that
+    /// does not have a specific 256 bit value.
+    fn encode_literal_value(&self, literal: &Literal) -> Option<SMTExpr> {
+        (if let Some(hex) = literal.literal.strip_prefix("0x") {
+            Some(num_bigint::BigUint::from_str_radix(hex, 16).unwrap())
+        } else if let Some(string) = literal.literal.strip_prefix('\"') {
+            assert!(string.len() >= 2 && string.ends_with('\"'));
+            // This is usually only used for references to data objects,
+            // so we do not encode it.
+            None
         } else {
-            literal.literal.parse::<num_bigint::BigUint>().unwrap()
-        };
-        smt::literal_32_bytes(parsed)
+            Some(literal.literal.parse::<num_bigint::BigUint>().unwrap())
+        })
+        .map(smt::literal_32_bytes)
     }
 
     fn push_path_condition(&mut self, cond: SMTExpr) {
