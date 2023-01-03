@@ -1,7 +1,7 @@
 use std::{fs, fs::File, path::Path};
 
-use yools::encoder;
 use yools::encoder::Instructions;
+use yools::encoder::{self, EncoderSMTState};
 use yools::evaluator::Evaluator;
 use yools::evm_builtins::EVMInstructions;
 use yools::evm_context;
@@ -57,24 +57,24 @@ fn recognize_known_contract() {
     let main_ast = parse_and_resolve::<EVMInstructionsWithAssert>(&content, file);
 
     println!("=========== SETUP ===================");
-    let mut ssa_tracker = SSATracker::default();
     let mut evaluator = Evaluator::default();
-    evaluator.new_transaction(b"\x0a\x92\x54\xe4".to_vec());
+    let mut smt_state = EncoderSMTState::default();
+    smt_state
+        .evaluator
+        .new_transaction(b"\x0a\x92\x54\xe4".to_vec());
     // TODO also provide calldata to encoder?
     let mut query;
-    (query, evaluator, ssa_tracker) = encoder::encode_with_evaluator::<EVMInstructionsWithAssert>(
+    (query, smt_state) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
         &main_ast,
         loop_unroll_default(&content),
-        evaluator,
-        ssa_tracker,
+        smt_state,
     );
     println!("=========== CALL ===================");
     evaluator.new_transaction(b"\x85\x63\x28\x95".to_vec());
-    let (query2, ..) = encoder::encode_with_evaluator::<EVMInstructionsWithAssert>(
+    let (query2, ..) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
         &main_ast,
         loop_unroll_default(&content),
-        evaluator,
-        ssa_tracker,
+        smt_state,
     );
     query += &query2;
     unsat(&query, file);

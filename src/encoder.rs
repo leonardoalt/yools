@@ -36,6 +36,39 @@ pub struct Encoder<InstructionsType> {
     execution_position: ExecutionPositionManager,
 }
 
+/// Data that is needed if you want to use multiple Encoder instances
+/// for one SMT query.
+#[derive(Default)]
+pub struct EncoderSMTState {
+    pub expression_counter: u64,
+    pub ssa_tracker: SSATracker,
+    pub evaluator: Evaluator,
+    pub execution_position: ExecutionPositionManager,
+}
+
+impl<T: Instructions> From<EncoderSMTState> for Encoder<T> {
+    fn from(state: EncoderSMTState) -> Self {
+        Encoder::<T> {
+            expression_counter: state.expression_counter,
+            evaluator: state.evaluator,
+            ssa_tracker: state.ssa_tracker,
+            execution_position: state.execution_position,
+            ..Default::default()
+        }
+    }
+}
+
+impl<T> From<Encoder<T>> for EncoderSMTState {
+    fn from(encoder: Encoder<T>) -> Self {
+        EncoderSMTState {
+            expression_counter: encoder.expression_counter,
+            ssa_tracker: encoder.ssa_tracker,
+            evaluator: encoder.evaluator,
+            execution_position: encoder.execution_position,
+        }
+    }
+}
+
 pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
     let mut encoder = Encoder::<T>::default();
     encoder.encode(ast, loop_unroll);
@@ -59,17 +92,12 @@ pub fn encode_revert_reachable<T: Instructions>(
     encode_with_counterexamples(&mut encoder, counterexamples)
 }
 
-pub fn encode_with_evaluator<T: Instructions>(
+pub fn encode_with_SMT_state<T: Instructions>(
     ast: &Block,
     loop_unroll: u64,
-    evaluator: Evaluator,
-    ssa_tracker: SSATracker,
-) -> (String, Evaluator, SSATracker) {
-    let mut encoder = Encoder::<T> {
-        evaluator,
-        ssa_tracker,
-        ..Default::default()
-    };
+    smt_state: EncoderSMTState,
+) -> (String, EncoderSMTState) {
+    let mut encoder: Encoder<T> = smt_state.into();
     encoder.encode(ast, loop_unroll);
     let query = encoder
         .output
@@ -77,11 +105,7 @@ pub fn encode_with_evaluator<T: Instructions>(
         .map(|s| s.as_smt())
         .collect::<Vec<_>>()
         .join("\n");
-    (
-        query,
-        std::mem::take(&mut encoder.evaluator),
-        std::mem::take(&mut encoder.ssa_tracker),
-    )
+    (query, EncoderSMTState::from(encoder))
 }
 
 pub fn encode_solc_panic_reachable<T: Instructions>(
