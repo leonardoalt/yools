@@ -3,6 +3,7 @@ use crate::execution_position::ExecutionPositionManager;
 use crate::smt::{self, SMTExpr, SMTFormat, SMTSort, SMTStatement, SMTVariable};
 use crate::ssa_tracker::SSATracker;
 
+use num_traits::Num;
 use yultsur::dialect::{Builtin, Dialect};
 use yultsur::visitor::ASTVisitor;
 use yultsur::yul;
@@ -398,17 +399,12 @@ impl<T> Encoder<T> {
     }
 
     fn encode_literal_value(&self, literal: &Literal) -> SMTExpr {
-        if literal.literal.starts_with("0x") {
-            smt::literal(format!("{:0>64}", &literal.literal[2..]), SMTSort::BV(256))
+        let parsed = if literal.literal.starts_with("0x") {
+            num_bigint::BigUint::from_str_radix(&literal.literal[2..], 16).unwrap()
         } else {
-            smt::literal(
-                format!(
-                    "{:064X}",
-                    literal.literal.parse::<num_bigint::BigUint>().unwrap()
-                ),
-                SMTSort::BV(256),
-            )
-        }
+            literal.literal.parse::<num_bigint::BigUint>().unwrap()
+        };
+        smt::literal_32_bytes(parsed)
     }
 
     fn push_path_condition(&mut self, cond: SMTExpr) {
