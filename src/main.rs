@@ -48,6 +48,15 @@ fn symbolic_subcommand() -> App<'static> {
                 .required(true),
         )
         .arg(
+            Arg::with_name("calls")
+                .short('c')
+                .long("calls")
+                .help("Comma-separated list of functions to call (selectors)")
+                .value_name("CALLS")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("eval")
                 .short('e')
                 .long("eval")
@@ -97,10 +106,26 @@ fn symbolic_revert_cli(sub_matches: &ArgMatches) -> Result<(), String> {
         vec![]
     };
 
+    let signatures = if let Some(signatures) = sub_matches.value_of("calls") {
+        signatures
+            .split(',')
+            .map(|sig| {
+                Some(
+                    (0..sig.len())
+                        .step_by(2)
+                        .map(|i| u8::from_str_radix(&sig[i..i + 2], 16).unwrap())
+                        .collect::<Vec<u8>>(),
+                )
+            })
+            .collect()
+    } else {
+        vec![None]
+    };
     use codespan_reporting::term::termcolor;
     let mut output = termcolor::StandardStream::stdout(termcolor::ColorChoice::Always);
     symbolic_revert(
         &source,
+        signatures,
         loop_unroll,
         sub_matches.value_of("solver").unwrap(),
         eval_strings,
@@ -110,6 +135,7 @@ fn symbolic_revert_cli(sub_matches: &ArgMatches) -> Result<(), String> {
 
 fn symbolic_revert(
     source: &str,
+    signatures: Vec<Option<Vec<u8>>>,
     loop_unroll: u64,
     solver: &str,
     eval_strings: Vec<String>,
@@ -127,8 +153,9 @@ fn symbolic_revert(
         })
         .collect::<Result<Vec<_>, String>>()?;
     let (query, counterexamples_encoded, panic_position, position_manager) =
-        yools::encoder::encode_solc_panic_reachable::<EVMInstructions>(
+        yools::encoder::encode_solc_panic_reachable_with_signatures::<EVMInstructions>(
             &ast,
+            signatures,
             loop_unroll,
             &counterexamples,
         );
@@ -140,11 +167,11 @@ fn symbolic_revert(
         true => {
             let panic_position = values.pop().unwrap();
             if let solver::ModelValue::Number(position) = panic_position {
+                let pos = execution_position::PositionID(position.to_usize().unwrap());
                 print_detailed_diagnostics(
                     source,
-                    position_manager.call_stack_at_position(execution_position::PositionID(
-                        position.to_usize().unwrap(),
-                    )),
+                    position_manager.calldata_at_position(pos),
+                    position_manager.call_stack_at_position(pos),
                     output,
                 );
             } else {
@@ -174,6 +201,7 @@ fn symbolic_revert(
 
 fn print_detailed_diagnostics(
     source: &str,
+    calldata: &[Option<Vec<u8>>],
     call_stack: &[Option<SourceLocation>],
     output: &mut dyn WriteColor,
 ) {
@@ -181,12 +209,29 @@ fn print_detailed_diagnostics(
     use cs::diagnostic::{Diagnostic, Label};
     use cs::files::SimpleFiles;
 
+    let calldata: String = calldata
+        .iter()
+        .map(|c| {
+            let x = c
+                .clone()
+                .unwrap_or_default()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<String>>()
+                .concat();
+            x
+        })
+        .collect::<Vec<String>>()
+        .join(",");
+
     let config = codespan_reporting::term::Config::default();
     let mut files = SimpleFiles::new();
     let file_id = files.add("input", source);
     if let [stack @ .., Some(pos)] = call_stack {
         let diagnostic = Diagnostic::error()
-            .with_message("Panic is reachable.")
+            .with_message(format!(
+                "Panic is reachable. In last call of sequence: {calldata}"
+            ))
             .with_labels(vec![Label::primary(file_id, pos.start..pos.end)
                 .with_message("This revert causes a panic.")]);
         cs::term::emit(output, &config, &files, &diagnostic).unwrap();
@@ -230,7 +275,7 @@ mod test {
             "}\n"
         ).to_string();
         let mut output = termcolor::NoColor::new(BufWriter::new(Vec::new()));
-        symbolic_revert(&source, 1, "z3", vec![], &mut output).unwrap();
+        symbolic_revert(&source, vec![None], 1, "z3", vec![], &mut output).unwrap();
         let output_str = std::str::from_utf8(output.get_ref().buffer()).unwrap();
         println!("{output_str}");
         assert_eq!(

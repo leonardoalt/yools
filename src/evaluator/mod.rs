@@ -1,8 +1,12 @@
 use std::fmt;
+use std::fmt::Display;
 
 use num_bigint::BigUint;
 
+pub mod engine;
 pub mod simplifier;
+
+pub use engine::Evaluator;
 
 /// Symbolic or concrete value
 #[derive(Debug, Clone, PartialEq)]
@@ -20,7 +24,7 @@ pub enum Value {
     KnownContractAddress(String, u64),
 }
 
-impl fmt::Display for Value {
+impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Concrete(v) => write!(f, "0x{v:x}"),
