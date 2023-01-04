@@ -415,7 +415,7 @@ pub fn encode_solc_panic_reachable(ssa: &mut SSATracker) -> SMTStatement {
         smt::neq(context().revert_flag.smt_var(ssa), 0),
         smt::eq(
             context().revert_sig_4.smt_var(ssa),
-            smt::literal("4e487b71".to_string(), smt::bv(32)),
+            smt::literal_4_bytes(0x4e487b71u64),
         ),
     ]))
 }

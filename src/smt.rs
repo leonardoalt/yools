@@ -1,3 +1,5 @@
+use num_bigint::BigUint;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SMTSort {
     Bool,
@@ -36,8 +38,13 @@ pub struct SMTExpr {
 
 impl From<u64> for SMTExpr {
     fn from(input: u64) -> SMTExpr {
+        let formatted = if input < 1000 {
+            format!("(_ bv{input} 256)")
+        } else {
+            format!("#x{input:064x}")
+        };
         SMTExpr {
-            op: SMTOp::Literal(format!("{input:064x}"), SMTSort::BV(256)),
+            op: SMTOp::Literal(formatted, SMTSort::BV(256)),
             args: vec![],
         }
     }
@@ -360,7 +367,8 @@ pub fn as_const<V: Into<SMTExpr>>(sort: SMTSort, val: V) -> SMTExpr {
     }
 }
 
-pub fn literal(lit: String, sort: SMTSort) -> SMTExpr {
+fn literal(lit: String, sort: SMTSort) -> SMTExpr {
+    assert!(lit.starts_with("#x") || lit.starts_with("(_ bv") || &lit == "true" || &lit == "false");
     SMTExpr {
         op: SMTOp::Literal(lit, sort),
         args: vec![],
@@ -375,15 +383,26 @@ pub fn uf(function: SMTVariable, args: Vec<SMTExpr>) -> SMTExpr {
 }
 
 pub fn literal_1_byte(n: u64) -> SMTExpr {
-    literal(format!("{n:02x}"), SMTSort::BV(8))
+    literal(format!("#x{n:02x}"), SMTSort::BV(8))
 }
 
 pub fn literal_4_bytes(n: u64) -> SMTExpr {
-    literal(format!("{n:08x}"), SMTSort::BV(32))
+    literal(format!("#x{n:08x}"), SMTSort::BV(32))
 }
 
 pub fn literal_12_bytes(n: u64) -> SMTExpr {
-    literal(format!("{n:024x}"), SMTSort::BV(96))
+    literal(format!("#x{n:024x}"), SMTSort::BV(96))
+}
+
+pub fn literal_32_bytes(n: BigUint) -> SMTExpr {
+    literal(
+        if n < BigUint::from(1000u32) {
+            format!("(_ bv{n} 256)")
+        } else {
+            format!("#x{n:064x}")
+        },
+        SMTSort::BV(256),
+    )
 }
 
 fn literal_bool(lit: String) -> SMTExpr {
@@ -667,8 +686,7 @@ impl SMTFormat for SMTExpr {
             }
 
             SMTOp::Literal(lit, sort) => match sort {
-                SMTSort::Bool => lit.to_string(),
-                SMTSort::BV(_) => format!("#x{lit}"),
+                SMTSort::Bool | SMTSort::BV(_) => lit.to_string(),
                 _ => panic!(),
             },
             SMTOp::Variable(var) if self.args.is_empty() => var.as_smt(),
