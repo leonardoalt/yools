@@ -50,36 +50,36 @@ impl encoder::Instructions for EVMInstructionsWithAssert {
     }
 }
 
-#[test]
-fn recognize_known_contract() {
-    let file = "tests/contract_creation_test.yul";
-    let content = fs::read_to_string(file).expect("I need to read this file.");
-    let main_ast = parse_and_resolve::<EVMInstructionsWithAssert>(&content, file);
+// #[test]
+// fn recognize_known_contract() {
+//     let file = "tests/contract_creation_test.yul";
+//     let content = fs::read_to_string(file).expect("I need to read this file.");
+//     let main_ast = parse_and_resolve::<EVMInstructionsWithAssert>(&content, file);
 
-    println!("=========== SETUP ===================");
-    let mut evaluator = Evaluator::default();
-    let mut smt_state = EncoderSMTState::default();
-    smt_state
-        .evaluator
-        .new_transaction(b"\x0a\x92\x54\xe4".to_vec());
-    // TODO also provide calldata to encoder?
-    let mut query;
-    (query, smt_state) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
-        &main_ast,
-        loop_unroll_default(&content),
-        smt_state,
-    );
-    println!("=========== CALL ===================");
-    evaluator.new_transaction(b"\x85\x63\x28\x95".to_vec());
-    let (query2, ..) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
-        &main_ast,
-        loop_unroll_default(&content),
-        smt_state,
-    );
-    query += &query2;
-    unsat(&query, file);
-    // TODO the actual test.
-}
+//     println!("=========== SETUP ===================");
+//     let mut evaluator = Evaluator::default();
+//     let mut smt_state = EncoderSMTState::default();
+//     smt_state
+//         .evaluator
+//         .new_transaction(b"\x0a\x92\x54\xe4".to_vec());
+//     // TODO also provide calldata to encoder?
+//     let mut query;
+//     (query, smt_state) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
+//         &main_ast,
+//         loop_unroll_default(&content),
+//         smt_state,
+//     );
+//     println!("=========== CALL ===================");
+//     evaluator.new_transaction(b"\x85\x63\x28\x95".to_vec());
+//     let (query2, ..) = encoder::encode_with_SMT_state::<EVMInstructionsWithAssert>(
+//         &main_ast,
+//         loop_unroll_default(&content),
+//         smt_state,
+//     );
+//     query += &query2;
+//     unsat(&query, file);
+//     // TODO the actual test.
+// }
 
 #[test]
 fn test_syntax() {

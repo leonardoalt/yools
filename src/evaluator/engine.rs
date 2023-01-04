@@ -65,8 +65,8 @@ impl Evaluator {
     /// Keeps storage but resets memory.
     /// TODO: Change this interface to "push new call" or something.
     /// TODO should also set the current address.
-    pub fn new_transaction(&mut self, calldata: Vec<u8>) {
-        self.calldata = Some(calldata);
+    pub fn new_transaction(&mut self, calldata: Option<Vec<u8>>) {
+        self.calldata = calldata;
         self.memory.clear();
         self.memory_slices.clear();
         self.unknown_memory_is_zero = true;

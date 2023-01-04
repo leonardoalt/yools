@@ -40,6 +40,7 @@ pub struct Encoder<InstructionsType> {
 /// for one SMT query.
 #[derive(Default)]
 pub struct EncoderSMTState {
+    pub query: Vec<SMTStatement>,
     pub expression_counter: u64,
     pub ssa_tracker: SSATracker,
     pub evaluator: Evaluator,
@@ -49,6 +50,7 @@ pub struct EncoderSMTState {
 impl<T: Instructions> From<EncoderSMTState> for Encoder<T> {
     fn from(state: EncoderSMTState) -> Self {
         Encoder::<T> {
+            output: state.query,
             expression_counter: state.expression_counter,
             evaluator: state.evaluator,
             ssa_tracker: state.ssa_tracker,
@@ -61,6 +63,7 @@ impl<T: Instructions> From<EncoderSMTState> for Encoder<T> {
 impl<T> From<Encoder<T>> for EncoderSMTState {
     fn from(encoder: Encoder<T>) -> Self {
         EncoderSMTState {
+            query: encoder.output,
             expression_counter: encoder.expression_counter,
             ssa_tracker: encoder.ssa_tracker,
             evaluator: encoder.evaluator,
@@ -92,20 +95,30 @@ pub fn encode_revert_reachable<T: Instructions>(
     encode_with_counterexamples(&mut encoder, counterexamples)
 }
 
-pub fn encode_with_SMT_state<T: Instructions>(
+pub fn encode_solc_panic_reachable_with_signatures<T: Instructions>(
     ast: &Block,
+    signatures: Vec<Option<Vec<u8>>>,
     loop_unroll: u64,
-    smt_state: EncoderSMTState,
-) -> (String, EncoderSMTState) {
+    counterexamples: &[Expression],
+) -> (String, Vec<String>, String, ExecutionPositionManager) {
+    let mut smt_state = EncoderSMTState::default();
+    for signature in signatures {
+        // TODO Check if this specifies the exact calldata or just an initial segment.
+        smt_state.evaluator.new_transaction(signature.clone());
+        smt_state.execution_position.new_external_call(signature);
+        // TODO also provide calldata to encoder?
+        let mut encoder: Encoder<T> = smt_state.into();
+        encoder.encode(ast, loop_unroll);
+        smt_state = encoder.into();
+    }
     let mut encoder: Encoder<T> = smt_state.into();
-    encoder.encode(ast, loop_unroll);
-    let query = encoder
-        .output
-        .iter()
-        .map(|s| s.as_smt())
-        .collect::<Vec<_>>()
-        .join("\n");
-    (query, EncoderSMTState::from(encoder))
+    encoder.encode_solc_panic_reachable();
+    let revert_position = ExecutionPositionManager::smt_variable()
+        .smt_var(&mut encoder.ssa_tracker)
+        .as_smt();
+
+    let (enc, cex) = encode_with_counterexamples(&mut encoder, counterexamples);
+    (enc, cex, revert_position, encoder.execution_position)
 }
 
 pub fn encode_solc_panic_reachable<T: Instructions>(

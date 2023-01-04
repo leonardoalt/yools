@@ -15,6 +15,7 @@ pub struct ExecutionPositionManager {
     positions: Vec<ExecutionPosition>,
 }
 
+#[derive(Clone, Copy)]
 pub struct PositionID(pub usize);
 
 impl From<PositionID> for SMTExpr {
@@ -25,6 +26,7 @@ impl From<PositionID> for SMTExpr {
 
 struct ExecutionPosition {
     call_stack: Vec<Option<SourceLocation>>,
+    calldata_sequence: Vec<Option<Vec<u8>>>,
 }
 
 impl ExecutionPositionManager {
@@ -46,8 +48,16 @@ impl ExecutionPositionManager {
         }
     }
 
+    pub fn new_external_call(&mut self, calldata: Option<Vec<u8>>) {
+        self.append_position(ExecutionPosition {
+            calldata_sequence: [self.current_calldata_sequence(), vec![calldata]].concat(),
+            call_stack: self.current_call_stack(),
+        });
+    }
+
     pub fn function_called(&mut self, fun: &FunctionCall) {
         self.append_position(ExecutionPosition {
+            calldata_sequence: self.current_calldata_sequence(),
             call_stack: [self.current_call_stack(), vec![fun.location.clone()]].concat(),
         });
     }
@@ -55,7 +65,10 @@ impl ExecutionPositionManager {
     pub fn function_returned(&mut self) {
         let mut call_stack = self.current_call_stack();
         call_stack.pop().unwrap();
-        self.append_position(ExecutionPosition { call_stack })
+        self.append_position(ExecutionPosition {
+            calldata_sequence: self.current_calldata_sequence(),
+            call_stack,
+        })
     }
 
     /// Returns the current position ID that can later
@@ -68,9 +81,21 @@ impl ExecutionPositionManager {
         &self.positions[pos.0].call_stack
     }
 
+    pub fn calldata_at_position(&self, pos: PositionID) -> &Vec<Option<Vec<u8>>> {
+        &self.positions[pos.0].calldata_sequence
+    }
+
     fn append_position(&mut self, pos: ExecutionPosition) {
         self.positions.push(pos)
     }
+
+    fn current_calldata_sequence(&self) -> Vec<Option<Vec<u8>>> {
+        match self.positions.iter().last() {
+            Some(p) => p.calldata_sequence.clone(),
+            None => vec![],
+        }
+    }
+
     fn current_call_stack(&self) -> Vec<Option<SourceLocation>> {
         match self.positions.iter().last() {
             Some(p) => p.call_stack.clone(),
