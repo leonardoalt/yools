@@ -32,6 +32,7 @@ pub struct Encoder<InstructionsType> {
     loop_unroll: u64,
     path_conditions: Vec<SMTExpr>,
     execution_position: ExecutionPositionManager,
+    loop_stack: Vec<Vec<(smt::SMTExpr, BTreeMap<u64, u64>)>>,
 }
 
 pub fn encode<T: Instructions>(ast: &Block, loop_unroll: u64) -> String {
@@ -190,6 +191,7 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             yul::Statement::If(if_st) => self.encode_if(if_st),
             yul::Statement::Switch(switch) => self.encode_switch(switch),
             yul::Statement::ForLoop(for_loop) => self.encode_for(for_loop),
+            yul::Statement::Break => self.encode_break(),
             yul::Statement::Expression(expr) => {
                 assert!(self.encode_expression(expr).is_empty());
             }
@@ -213,10 +215,13 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
     }
 
     fn encode_for(&mut self, for_loop: &yul::ForLoop) {
-        // TODO this does not support break/continue/leave
+        // TODO this does not support continue/leave
 
         self.encode_block(&for_loop.pre);
 
+        self.loop_stack.push(vec![]);
+
+        let mut breaked = smt::literal_false();
         for _i in 0..self.loop_unroll {
             let cond = self.encode_expression(&for_loop.condition);
             assert!(cond.len() == 1);
@@ -227,11 +232,44 @@ impl<InstructionsType: Instructions> Encoder<InstructionsType> {
             self.encode_block(&for_loop.post);
             self.pop_path_condition();
 
-            let output = self
-                .ssa_tracker
-                .join_branches(smt::eq(cond[0].clone(), 0), prev_ssa);
+            let mut st: Vec<SMTStatement> = vec![];
+            self.loop_stack
+                .last()
+                .unwrap()
+                .iter()
+                .for_each(|(cond, ssa)| {
+                    let output = self.ssa_tracker.join_branches(cond.clone(), ssa.clone());
+                    st.extend(output);
+                });
+            self.out_vec(st);
+
+            let output = self.ssa_tracker.join_branches(
+                smt::or(smt::eq(cond[0].clone(), 0), breaked.clone()),
+                prev_ssa,
+            );
+            // if the loop condition is false we reset to even earlier.
             self.out_vec(output);
+
+            breaked = smt::or(
+                breaked,
+                smt::or_vec(
+                    self.loop_stack
+                        .last()
+                        .unwrap()
+                        .iter()
+                        .map(|(cond, _)| cond.clone())
+                        .collect::<Vec<_>>(),
+                ),
+            );
         }
+
+        self.loop_stack.pop();
+    }
+
+    fn encode_break(&mut self) {
+        let cond = smt::and_vec(self.path_conditions.clone());
+        let ssa = self.ssa_tracker.copy_current_ssa();
+        self.loop_stack.last_mut().unwrap().push((cond, ssa));
     }
 
     fn encode_switch(&mut self, switch: &yul::Switch) {
